@@ -2,6 +2,10 @@ package org.arkikeskus.launcher.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.fillMaxSize
@@ -41,8 +45,14 @@ fun LauncherShell(
 
     AnimatedVisibility(
         visible = drawerOpen,
-        enter = slideInVertically { it },
-        exit = slideOutVertically { it },
+        enter = slideInVertically(
+            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+            initialOffsetY = { it },
+        ) + fadeIn(tween(durationMillis = 220)),
+        exit = slideOutVertically(
+            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+            targetOffsetY = { it },
+        ) + fadeOut(tween(durationMillis = 180)),
     ) {
         AppDrawerScreen(
             onClose = { drawerOpen = false },
