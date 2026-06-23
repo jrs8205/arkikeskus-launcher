@@ -40,6 +40,7 @@ fun LauncherShell(
     HomeScreen(
         onOpenDrawer = { drawerOpen = true },
         onOpenSettings = onOpenSettings,
+        homeSignals = homeSignals,
         modifier = modifier.fillMaxSize(),
     )
 

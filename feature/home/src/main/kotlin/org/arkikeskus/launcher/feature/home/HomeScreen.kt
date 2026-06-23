@@ -1,8 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,21 +17,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.ui.AppActions
 
 /**
- * Home screen: a non-scrolling grid of placed app shortcuts (top) + the dock (bottom).
- * Whole-screen gestures (toggleable): swipe up = drawer, swipe down = notifications,
- * long-press empty area = settings. Long-press a home icon = remove it.
+ * Home screen: a paged [Workspace] of app shortcuts + the dock. All home gestures (icon drag, swipe
+ * up/down, long-press settings, page swipe) live inside [Workspace] so they don't fight each other.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,66 +38,54 @@ fun HomeScreen(
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    homeSignals: Flow<Unit> = emptyFlow(),
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val settings = uiState.settings
     val context = LocalContext.current
     var selectedHomeApp by remember { mutableStateOf<AppItem?>(null) }
+    var selectedDockApp by remember { mutableStateOf<AppItem?>(null) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(settings.swipeUpForDrawer, settings.swipeDownForNotifications) {
-                var triggered = false
-                detectVerticalDragGestures(
-                    onDragStart = { triggered = false },
-                    onDragEnd = { triggered = false },
-                    onVerticalDrag = { _, dragAmount ->
-                        if (!triggered) {
-                            if (dragAmount < -30f && settings.swipeUpForDrawer) {
-                                triggered = true
-                                onOpenDrawer()
-                            } else if (dragAmount > 30f && settings.swipeDownForNotifications) {
-                                triggered = true
-                                NotificationShade.expand(context)
-                            }
-                        }
-                    },
-                )
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(onLongPress = { onOpenSettings() })
-            },
-    ) {
-        if (uiState.homeApps.isNotEmpty()) {
-            HomeGrid(
-                apps = uiState.homeApps,
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Workspace(
+                pageCount = uiState.pageCount,
                 columns = settings.homeColumns,
+                rows = viewModel.rows,
+                placedApps = uiState.placedApps,
                 showLabels = settings.showHomeLabels,
+                showPageIndicator = settings.showPageIndicator,
+                swipeUpForDrawer = settings.swipeUpForDrawer,
+                swipeDownForNotifications = settings.swipeDownForNotifications,
+                homeSignals = homeSignals,
                 onAppClick = viewModel::launch,
-                onAppLongClick = { selectedHomeApp = it },
+                onAppMenu = { selectedHomeApp = it },
+                onMove = viewModel::moveItem,
+                onOpenDrawer = onOpenDrawer,
+                onOpenNotifications = { NotificationShade.expand(context) },
+                onOpenSettings = onOpenSettings,
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
+                    .weight(1f)
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 24.dp),
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
             )
-        }
 
-        if (settings.dockEnabled && uiState.dockApps.isNotEmpty()) {
-            Dock(
-                apps = uiState.dockApps,
-                showLabels = settings.showDockLabels,
-                backgroundAlpha = settings.dockBackgroundOpacity,
-                onAppClick = viewModel::launch,
-                onReorder = viewModel::reorderDock,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-            )
+            if (settings.dockEnabled && uiState.dockApps.isNotEmpty()) {
+                Dock(
+                    apps = uiState.dockApps,
+                    showLabels = settings.showDockLabels,
+                    backgroundAlpha = settings.dockBackgroundOpacity,
+                    onAppClick = viewModel::launch,
+                    onReorder = viewModel::reorderDock,
+                    onAppMenu = { selectedDockApp = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                )
+            }
         }
     }
 
@@ -133,6 +118,40 @@ fun HomeScreen(
                 HomeActionRow(stringResource(R.string.uninstall)) {
                     AppActions.uninstall(context, selected.packageName)
                     selectedHomeApp = null
+                }
+            }
+        }
+    }
+
+    val dockSelected = selectedDockApp
+    if (dockSelected != null) {
+        ModalBottomSheet(onDismissRequest = { selectedDockApp = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+            ) {
+                Text(
+                    text = dockSelected.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                HomeActionRow(stringResource(R.string.dock_remove)) {
+                    viewModel.removeFromDock(dockSelected)
+                    selectedDockApp = null
+                }
+                HomeActionRow(stringResource(R.string.home_add)) {
+                    viewModel.addToHome(dockSelected)
+                    selectedDockApp = null
+                }
+                HomeActionRow(stringResource(R.string.app_info)) {
+                    AppActions.openAppInfo(context, dockSelected.packageName)
+                    selectedDockApp = null
+                }
+                HomeActionRow(stringResource(R.string.uninstall)) {
+                    AppActions.uninstall(context, dockSelected.packageName)
+                    selectedDockApp = null
                 }
             }
         }

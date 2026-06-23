@@ -2,7 +2,9 @@
 <resources>
     <string name="home_open_drawer_hint">Swipe up to open apps</string>
     <string name="home_remove">Remove from home</string>
+    <string name="home_add">Add to home</string>
     <string name="home_add_to_dock">Add to dock</string>
+    <string name="dock_remove">Remove from dock</string>
     <string name="app_info">App info</string>
     <string name="uninstall">Uninstall</string>
 </resources>
