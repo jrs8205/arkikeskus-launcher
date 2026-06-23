@@ -19,6 +19,7 @@ data class AppDrawerUiState(
     val query: String = "",
     val columns: Int = 4,
     val dockKeys: Set<String> = emptySet(),
+    val showLabels: Boolean = true,
 )
 
 @HiltViewModel
@@ -45,6 +46,7 @@ class AppDrawerViewModel @Inject constructor(
             query = q,
             columns = settings.drawerColumns,
             dockKeys = favorites.toSet(),
+            showLabels = settings.showDrawerLabels,
         )
     }.stateIn(
         scope = viewModelScope,

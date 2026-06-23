@@ -30,6 +30,9 @@ class SettingsRepository @Inject constructor(
             drawerColumns = p[Keys.DRAWER_COLUMNS] ?: 4,
             swipeUpForDrawer = p[Keys.SWIPE_UP_DRAWER] ?: true,
             swipeDownForNotifications = p[Keys.SWIPE_DOWN_NOTIF] ?: true,
+            showDockLabels = p[Keys.SHOW_DOCK_LABELS] ?: false,
+            showHomeLabels = p[Keys.SHOW_HOME_LABELS] ?: true,
+            showDrawerLabels = p[Keys.SHOW_DRAWER_LABELS] ?: true,
         )
     }
 
@@ -44,6 +47,9 @@ class SettingsRepository @Inject constructor(
     suspend fun setDrawerColumns(value: Int) = edit { it[Keys.DRAWER_COLUMNS] = value }
     suspend fun setSwipeUpForDrawer(value: Boolean) = edit { it[Keys.SWIPE_UP_DRAWER] = value }
     suspend fun setSwipeDownForNotifications(value: Boolean) = edit { it[Keys.SWIPE_DOWN_NOTIF] = value }
+    suspend fun setShowDockLabels(value: Boolean) = edit { it[Keys.SHOW_DOCK_LABELS] = value }
+    suspend fun setShowHomeLabels(value: Boolean) = edit { it[Keys.SHOW_HOME_LABELS] = value }
+    suspend fun setShowDrawerLabels(value: Boolean) = edit { it[Keys.SHOW_DRAWER_LABELS] = value }
 
     suspend fun addToDock(key: String) = edit { p ->
         val current = currentFavorites(p).toMutableList()
@@ -76,5 +82,8 @@ class SettingsRepository @Inject constructor(
         val SWIPE_UP_DRAWER = booleanPreferencesKey("swipe_up_drawer")
         val SWIPE_DOWN_NOTIF = booleanPreferencesKey("swipe_down_notif")
         val DOCK_FAVORITES = stringPreferencesKey("dock_favorites")
+        val SHOW_DOCK_LABELS = booleanPreferencesKey("show_dock_labels")
+        val SHOW_HOME_LABELS = booleanPreferencesKey("show_home_labels")
+        val SHOW_DRAWER_LABELS = booleanPreferencesKey("show_drawer_labels")
     }
 }

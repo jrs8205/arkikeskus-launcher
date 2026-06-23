@@ -8,4 +8,7 @@ data class LauncherSettings(
     val drawerColumns: Int = 4,
     val swipeUpForDrawer: Boolean = true,
     val swipeDownForNotifications: Boolean = true,
+    val showDockLabels: Boolean = false,
+    val showHomeLabels: Boolean = true,
+    val showDrawerLabels: Boolean = true,
 )

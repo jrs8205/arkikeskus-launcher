@@ -69,6 +69,7 @@ fun AppDrawerScreen(
         },
         onAppLongClick = { selectedApp = it },
         onPullDownToClose = onClose,
+        showLabels = uiState.showLabels,
         modifier = modifier,
     )
 
@@ -122,6 +123,7 @@ private fun AppDrawerContent(
     onAppClick: (AppItem) -> Unit,
     onAppLongClick: (AppItem) -> Unit,
     onPullDownToClose: () -> Unit,
+    showLabels: Boolean,
     modifier: Modifier = Modifier,
 ) {
     // Pull-to-dismiss: when the grid is at the top and the user keeps dragging down, the leftover
@@ -176,6 +178,7 @@ private fun AppDrawerContent(
                     AppIcon(
                         appItem = app,
                         labelColor = MaterialTheme.colorScheme.onSurface,
+                        showLabel = showLabels,
                         maxLabelLines = 2,
                         modifier = Modifier
                             .combinedClickable(

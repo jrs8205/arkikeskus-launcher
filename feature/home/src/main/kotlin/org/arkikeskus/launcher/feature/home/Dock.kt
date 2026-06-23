@@ -34,6 +34,7 @@ import kotlin.math.roundToInt
 @Composable
 fun Dock(
     apps: List<AppItem>,
+    showLabels: Boolean,
     onAppClick: (AppItem) -> Unit,
     onReorder: (List<AppItem>) -> Unit,
     modifier: Modifier = Modifier,
@@ -97,7 +98,7 @@ fun Dock(
                     AppIcon(
                         appItem = app,
                         labelColor = Color.White,
-                        showLabel = false,
+                        showLabel = showLabels,
                         iconSize = 52.dp,
                     )
                 }

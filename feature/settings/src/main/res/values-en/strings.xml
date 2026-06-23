@@ -10,4 +10,5 @@
     <string name="settings_drawer">App drawer</string>
     <string name="settings_home">Home screen</string>
     <string name="settings_columns">Columns</string>
+    <string name="settings_show_labels">Show labels</string>
 </resources>

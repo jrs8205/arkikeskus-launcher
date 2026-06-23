@@ -60,6 +60,7 @@ fun HomeScreen(
         if (settings.dockEnabled && uiState.dockApps.isNotEmpty()) {
             Dock(
                 apps = uiState.dockApps,
+                showLabels = settings.showDockLabels,
                 onAppClick = viewModel::launch,
                 onReorder = viewModel::reorderDock,
                 modifier = Modifier

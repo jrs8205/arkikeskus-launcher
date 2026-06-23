@@ -28,6 +28,9 @@ class SettingsViewModel @Inject constructor(
     fun setDockColumns(value: Int) = update { repository.setDockColumns(value) }
     fun setDrawerColumns(value: Int) = update { repository.setDrawerColumns(value) }
     fun setHomeColumns(value: Int) = update { repository.setHomeColumns(value) }
+    fun setShowDockLabels(value: Boolean) = update { repository.setShowDockLabels(value) }
+    fun setShowHomeLabels(value: Boolean) = update { repository.setShowHomeLabels(value) }
+    fun setShowDrawerLabels(value: Boolean) = update { repository.setShowDrawerLabels(value) }
 
     private fun update(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
