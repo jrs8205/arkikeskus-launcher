@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.data.AppRepository
 import org.arkikeskus.launcher.data.SettingsRepository
 import org.arkikeskus.launcher.model.AppItem
@@ -39,4 +40,7 @@ class HomeViewModel @Inject constructor(
     )
 
     fun launch(appItem: AppItem) = appRepository.launch(appItem)
+
+    fun reorderDock(newOrder: List<AppItem>) =
+        viewModelScope.launch { settingsRepository.setDockOrder(newOrder.map { it.key }) }
 }

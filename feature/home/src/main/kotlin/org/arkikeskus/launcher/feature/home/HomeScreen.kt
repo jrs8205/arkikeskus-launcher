@@ -61,6 +61,7 @@ fun HomeScreen(
             Dock(
                 apps = uiState.dockApps,
                 onAppClick = viewModel::launch,
+                onReorder = viewModel::reorderDock,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()

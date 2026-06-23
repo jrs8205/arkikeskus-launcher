@@ -57,6 +57,10 @@ class SettingsRepository @Inject constructor(
         p[Keys.DOCK_FAVORITES] = current.joinToString("\n")
     }
 
+    suspend fun setDockOrder(keys: List<String>) = edit { p ->
+        p[Keys.DOCK_FAVORITES] = keys.joinToString("\n")
+    }
+
     private fun currentFavorites(p: MutablePreferences): List<String> =
         p[Keys.DOCK_FAVORITES]?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
 
