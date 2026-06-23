@@ -76,6 +76,8 @@ fun HomeScreen(
                 color = Color.White.copy(alpha = 0.85f),
             )
         }
+        StatusBlock(modifier = Modifier.align(Alignment.TopEnd))
+
         Text(
             text = stringResource(R.string.home_open_drawer_hint),
             color = Color.White.copy(alpha = 0.7f),

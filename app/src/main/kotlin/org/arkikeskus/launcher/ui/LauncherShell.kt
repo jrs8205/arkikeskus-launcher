@@ -6,21 +6,30 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.Flow
 import org.arkikeskus.launcher.feature.appdrawer.AppDrawerScreen
 import org.arkikeskus.launcher.feature.home.HomeScreen
 
 /**
  * Hosts the launcher surface: the home screen with the app drawer as a slide-up overlay.
- * Keeps the drawer open/close state; back closes the drawer.
+ * Both BACK and HOME (via [homeSignals]) close the drawer.
  */
 @Composable
-fun LauncherShell(modifier: Modifier = Modifier) {
+fun LauncherShell(
+    homeSignals: Flow<Unit>,
+    modifier: Modifier = Modifier,
+) {
     var drawerOpen by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(homeSignals) {
+        homeSignals.collect { drawerOpen = false }
+    }
 
     HomeScreen(
         onOpenDrawer = { drawerOpen = true },
