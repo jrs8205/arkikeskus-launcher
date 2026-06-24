@@ -2,26 +2,58 @@ package org.arkikeskus.launcher.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.net.Uri
+import android.os.Process
 import android.provider.Settings
+import org.arkikeskus.launcher.model.AppItem
 
 /**
- * System app actions reachable from the long-press menus. App info opens the OS app-details
- * screen (from where the user can force-stop or uninstall); uninstall launches the system
- * uninstall dialog directly.
+ * System app actions reachable from the long-press menus, targeted at the app's own user profile.
+ *
+ * A package can be installed in several profiles (personal, work, Private Space); a bare package
+ * name doesn't identify which one, so these take the full [AppItem] and route through the
+ * profile-aware [LauncherApps] APIs. Every call is wrapped in `runCatching` because an OS-blocked
+ * profile action must never crash the launcher (it is the device's HOME).
  */
 object AppActions {
-    fun openAppInfo(context: Context, packageName: String) {
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            .setData(Uri.fromParts("package", packageName, null))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+
+    /** Opens the OS app-details screen for [appItem] in its own profile. */
+    fun openAppInfo(context: Context, appItem: AppItem) {
+        val launcherApps = context.getSystemService(LauncherApps::class.java)
+        val opened = runCatching {
+            launcherApps?.startAppDetailsActivity(appItem.componentName, appItem.user, null, null)
+        }.isSuccess
+        // Fallback for the personal profile if the LauncherApps route is unavailable.
+        if (!opened) {
+            runCatching {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                        .setData(Uri.fromParts("package", appItem.packageName, null))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }
     }
 
-    fun uninstall(context: Context, packageName: String) {
-        val intent = Intent(Intent.ACTION_DELETE)
-            .setData(Uri.fromParts("package", packageName, null))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+    /**
+     * Uninstalls [appItem]. The personal profile uses the system uninstall dialog directly; other
+     * profiles (work / Private Space) have no reliable public profile-aware uninstall intent, so we
+     * open that profile's app-details screen instead, from where the OS offers removal. This avoids
+     * silently targeting (or uninstalling) the wrong profile's copy of the same package.
+     */
+    fun uninstall(context: Context, appItem: AppItem) {
+        if (appItem.user == Process.myUserHandle()) {
+            val started = runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_DELETE)
+                        .setData(Uri.fromParts("package", appItem.packageName, null))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }.isSuccess
+            if (!started) openAppInfo(context, appItem)
+        } else {
+            openAppInfo(context, appItem)
+        }
     }
 }

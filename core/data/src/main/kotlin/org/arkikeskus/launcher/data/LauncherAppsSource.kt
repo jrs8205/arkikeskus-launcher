@@ -65,7 +65,12 @@ class LauncherAppsSource @Inject constructor(
         }.sortedBy { it.label.lowercase() }
     }
 
-    fun launch(appItem: AppItem) {
+    /**
+     * Launches [appItem]. A launcher is the device's HOME, so a single failed launch (app removed
+     * mid-tap, profile locked, activity no longer launchable) must never crash the process — the
+     * error is captured in the [Result] for the caller to log or surface.
+     */
+    fun launch(appItem: AppItem): Result<Unit> = runCatching {
         launcherApps.startMainActivity(appItem.componentName, appItem.user, null, null)
     }
 

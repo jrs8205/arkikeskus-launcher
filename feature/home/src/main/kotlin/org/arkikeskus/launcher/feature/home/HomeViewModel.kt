@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -67,10 +68,14 @@ class HomeViewModel @Inject constructor(
         initialValue = HomeUiState(),
     )
 
-    fun launch(appItem: AppItem) = appRepository.launch(appItem)
+    fun launch(appItem: AppItem) {
+        appRepository.launch(appItem).onFailure {
+            Log.w("HomeViewModel", "Failed to launch ${appItem.key}", it)
+        }
+    }
 
     fun reorderDock(newOrder: List<AppItem>) =
-        viewModelScope.launch { settingsRepository.setDockOrder(newOrder.map { it.key }) }
+        viewModelScope.launch { settingsRepository.reorderVisibleDock(newOrder.map { it.key }) }
 
     fun removeFromHome(appItem: AppItem) =
         viewModelScope.launch { homeLayoutRepository.removeFromHome(appItem) }
@@ -86,6 +91,7 @@ class HomeViewModel @Inject constructor(
         homeLayoutRepository.addToHome(appItem, columns)
     }
 
-    fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int) =
-        viewModelScope.launch { homeLayoutRepository.moveItem(appItem, page, cellX, cellY) }
+    /** Moves/swaps a home shortcut; returns whether the repository accepted it (see [Workspace]). */
+    suspend fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int): Boolean =
+        homeLayoutRepository.moveItem(appItem, page, cellX, cellY)
 }

@@ -63,8 +63,9 @@ fun AppDrawerScreen(
         onAppClick = { app ->
             if (app.packageName == context.packageName) {
                 onOpenSettings()
-            } else {
-                viewModel.onAppClick(app)
+            } else if (viewModel.onAppClick(app)) {
+                // Keep the drawer open if the launch failed, so the user isn't dumped back to home
+                // with no explanation.
                 onClose()
             }
         },
@@ -107,11 +108,11 @@ fun AppDrawerScreen(
                     selectedApp = null
                 }
                 ActionRow(stringResource(R.string.app_info)) {
-                    AppActions.openAppInfo(context, selected.packageName)
+                    AppActions.openAppInfo(context, selected)
                     selectedApp = null
                 }
                 ActionRow(stringResource(R.string.uninstall)) {
-                    AppActions.uninstall(context, selected.packageName)
+                    AppActions.uninstall(context, selected)
                     selectedApp = null
                 }
             }

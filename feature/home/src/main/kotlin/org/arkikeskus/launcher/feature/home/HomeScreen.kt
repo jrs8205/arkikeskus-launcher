@@ -112,11 +112,11 @@ fun HomeScreen(
                     selectedHomeApp = null
                 }
                 HomeActionRow(stringResource(R.string.app_info)) {
-                    AppActions.openAppInfo(context, selected.packageName)
+                    AppActions.openAppInfo(context, selected)
                     selectedHomeApp = null
                 }
                 HomeActionRow(stringResource(R.string.uninstall)) {
-                    AppActions.uninstall(context, selected.packageName)
+                    AppActions.uninstall(context, selected)
                     selectedHomeApp = null
                 }
             }
@@ -146,11 +146,11 @@ fun HomeScreen(
                     selectedDockApp = null
                 }
                 HomeActionRow(stringResource(R.string.app_info)) {
-                    AppActions.openAppInfo(context, dockSelected.packageName)
+                    AppActions.openAppInfo(context, dockSelected)
                     selectedDockApp = null
                 }
                 HomeActionRow(stringResource(R.string.uninstall)) {
-                    AppActions.uninstall(context, dockSelected.packageName)
+                    AppActions.uninstall(context, dockSelected)
                     selectedDockApp = null
                 }
             }

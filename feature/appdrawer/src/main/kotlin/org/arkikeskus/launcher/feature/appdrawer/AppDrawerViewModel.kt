@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.feature.appdrawer
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -64,7 +65,11 @@ class AppDrawerViewModel @Inject constructor(
         query.value = value
     }
 
-    fun onAppClick(appItem: AppItem) = appRepository.launch(appItem)
+    /** Launches [appItem]; returns whether it started, so the drawer only closes on success. */
+    fun onAppClick(appItem: AppItem): Boolean =
+        appRepository.launch(appItem)
+            .onFailure { Log.w("AppDrawerViewModel", "Failed to launch ${appItem.key}", it) }
+            .isSuccess
 
     fun addToDock(appItem: AppItem) = viewModelScope.launch { settingsRepository.addToDock(appItem.key) }
 

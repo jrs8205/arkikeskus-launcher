@@ -12,5 +12,5 @@ class AppRepository @Inject constructor(
     /** All launchable apps, sorted by label, updating on install/remove/change. */
     val apps: Flow<List<AppItem>> = source.appsFlow()
 
-    fun launch(appItem: AppItem) = source.launch(appItem)
+    fun launch(appItem: AppItem): Result<Unit> = source.launch(appItem)
 }

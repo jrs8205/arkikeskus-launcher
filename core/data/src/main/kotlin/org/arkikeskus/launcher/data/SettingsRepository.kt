@@ -68,8 +68,15 @@ class SettingsRepository @Inject constructor(
         p[Keys.DOCK_FAVORITES] = current.joinToString("\n")
     }
 
-    suspend fun setDockOrder(keys: List<String>) = edit { p ->
-        p[Keys.DOCK_FAVORITES] = keys.joinToString("\n")
+    /**
+     * Reorders only the currently visible dock favorites while keeping any favorites hidden by the
+     * `dockColumns` cap. The dock UI only ever sees the first `dockColumns` keys, so it must not be
+     * allowed to overwrite the full list — the hidden tail is preserved after the new visible order.
+     */
+    suspend fun reorderVisibleDock(visibleKeys: List<String>) = edit { p ->
+        val normalizedVisible = visibleKeys.distinct()
+        val hiddenTail = currentFavorites(p).filter { it !in normalizedVisible }
+        p[Keys.DOCK_FAVORITES] = (normalizedVisible + hiddenTail).joinToString("\n")
     }
 
     private fun currentFavorites(p: MutablePreferences): List<String> =

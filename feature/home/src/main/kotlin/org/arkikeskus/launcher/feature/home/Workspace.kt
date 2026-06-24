@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,7 +74,7 @@ fun Workspace(
     homeSignals: Flow<Unit>,
     onAppClick: (AppItem) -> Unit,
     onAppMenu: (AppItem) -> Unit,
-    onMove: (AppItem, Int, Int, Int) -> Unit,
+    onMove: suspend (AppItem, Int, Int, Int) -> Boolean,
     onOpenDrawer: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -119,6 +120,9 @@ fun Workspace(
             }
         }
     }
+    // The drag gesture's pointerInput block outlives recomposition (its keys don't include the app
+    // list), so it must read the *latest* placements through this state, not a stale closure capture.
+    val latestApps by rememberUpdatedState(effectiveApps)
 
     val cellW = if (columns > 0 && gridSize.width > 0) gridSize.width.toFloat() / columns else 1f
     val cellH = if (rows > 0 && gridSize.height > 0) gridSize.height.toFloat() / rows else 1f
@@ -228,9 +232,14 @@ fun Workspace(
                             Box(
                                 modifier = Modifier
                                     .offset {
+                                        // Safety net only: the repository reflows on column shrink,
+                                        // but clamp here too so a stale out-of-range cell can never
+                                        // draw off-screen for a frame before the reflow lands.
+                                        val safeCellX = placed.cellX.coerceIn(0, columns - 1)
+                                        val safeCellY = placed.cellY.coerceIn(0, rows - 1)
                                         IntOffset(
-                                            (placed.cellX * cellW).roundToInt(),
-                                            (placed.cellY * cellH).roundToInt(),
+                                            (safeCellX * cellW).roundToInt(),
+                                            (safeCellY * cellH).roundToInt(),
                                         )
                                     }
                                     .size(
@@ -337,12 +346,30 @@ fun Workspace(
                                                     val ty = (dragPos.y / cellH).toInt()
                                                         .coerceIn(0, rows - 1)
                                                     val targetPage = pagerState.currentPage
-                                                    onMove(d.app, targetPage, tx, ty)
-                                                    optimistic = optimistic +
-                                                        (d.app.key to Triple(targetPage, tx, ty))
+                                                    // Whoever sits in the target cell will swap back
+                                                    // into the dragged icon's old cell — mirror that
+                                                    // optimistically so neither flickers nor overlaps.
+                                                    val occupant = latestApps.firstOrNull {
+                                                        it.page == targetPage && it.cellX == tx &&
+                                                            it.cellY == ty && it.app.key != d.app.key
+                                                    }
+                                                    val source = Triple(d.page, d.cellX, d.cellY)
+                                                    optimistic = optimistic + buildMap {
+                                                        put(d.app.key, Triple(targetPage, tx, ty))
+                                                        occupant?.let { put(it.app.key, source) }
+                                                    }
                                                     haptics.performHapticFeedback(
                                                         HapticFeedbackType.LongPress,
                                                     )
+                                                    scope.launch {
+                                                        if (!onMove(d.app, targetPage, tx, ty)) {
+                                                            // Rejected (icon vanished) — roll back.
+                                                            optimistic = optimistic - buildList {
+                                                                add(d.app.key)
+                                                                occupant?.let { add(it.app.key) }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                             dragging = null

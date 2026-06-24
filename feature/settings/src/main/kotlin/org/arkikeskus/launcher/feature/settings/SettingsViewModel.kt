@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.arkikeskus.launcher.data.HomeLayoutRepository
 import org.arkikeskus.launcher.data.SettingsRepository
 import org.arkikeskus.launcher.model.LauncherSettings
 import javax.inject.Inject
@@ -14,6 +16,7 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    private val homeLayoutRepository: HomeLayoutRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<LauncherSettings> = repository.settings.stateIn(
@@ -27,7 +30,13 @@ class SettingsViewModel @Inject constructor(
     fun setDockEnabled(value: Boolean) = update { repository.setDockEnabled(value) }
     fun setDockColumns(value: Int) = update { repository.setDockColumns(value) }
     fun setDrawerColumns(value: Int) = update { repository.setDrawerColumns(value) }
-    fun setHomeColumns(value: Int) = update { repository.setHomeColumns(value) }
+    fun setHomeColumns(value: Int) = viewModelScope.launch {
+        // Shrinking the grid can leave shortcuts at an out-of-range cellX; repack them back on-screen
+        // before the new (smaller) column count reaches the home screen, so nothing draws off-grid.
+        val old = repository.settings.first().homeColumns
+        if (value < old) homeLayoutRepository.reflow(value)
+        repository.setHomeColumns(value)
+    }
     fun setShowDockLabels(value: Boolean) = update { repository.setShowDockLabels(value) }
     fun setShowHomeLabels(value: Boolean) = update { repository.setShowHomeLabels(value) }
     fun setShowDrawerLabels(value: Boolean) = update { repository.setShowDrawerLabels(value) }
