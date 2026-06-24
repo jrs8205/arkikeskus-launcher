@@ -60,6 +60,14 @@ class HomeLayoutRepository @Inject constructor(
         dao.deleteByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
     }
 
+    /** Moves/swaps a folder to a target home cell (folder relocation on the home grid). */
+    suspend fun moveFolder(folderId: Long, page: Int, cellX: Int, cellY: Int): Boolean =
+        db.withTransaction {
+            val source = dao.getById(folderId) ?: return@withTransaction false
+            moveOrSwap(source, page, cellX, cellY)
+            true
+        }
+
     /**
      * Repacks the top-level home items (apps and folders) into a [columns]-wide grid, preserving
      * reading order and spilling overflow onto later pages. Folder *contents* are left untouched.

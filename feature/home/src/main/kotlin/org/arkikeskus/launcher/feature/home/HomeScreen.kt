@@ -133,6 +133,7 @@ fun HomeScreen(
                 onAppClick = viewModel::launch,
                 onAppMenu = { app, anchor -> menuTarget = AppMenuTarget(app, anchor, DragSource.Home) },
                 onMove = viewModel::moveItem,
+                onMoveFolder = viewModel::moveFolder,
                 onMoveToDock = { app, index -> viewModel.moveToDock(app, index) },
                 onOpenFolder = { openFolderId = it.id },
                 onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },

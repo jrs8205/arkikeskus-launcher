@@ -129,6 +129,10 @@ class HomeViewModel @Inject constructor(
     suspend fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int): Boolean =
         homeLayoutRepository.moveItem(appItem, page, cellX, cellY)
 
+    /** Moves/swaps a folder to a home cell (folder relocation on the grid). */
+    suspend fun moveFolder(folderId: Long, page: Int, cellX: Int, cellY: Int): Boolean =
+        homeLayoutRepository.moveFolder(folderId, page, cellX, cellY)
+
     /** Cross-surface: an icon dragged from the dock onto a home cell — place it and leave the dock. */
     fun moveToHome(appItem: AppItem, page: Int, cellX: Int, cellY: Int) = viewModelScope.launch {
         val columns = settingsRepository.settings.first().homeColumns

@@ -86,6 +86,7 @@ fun Workspace(
     onAppClick: (AppItem) -> Unit,
     onAppMenu: (AppItem, IntOffset) -> Unit,
     onMove: suspend (AppItem, Int, Int, Int) -> Boolean,
+    onMoveFolder: suspend (Long, Int, Int, Int) -> Boolean,
     onMoveToDock: (AppItem, Int) -> Unit,
     onOpenFolder: (PlacedFolder) -> Unit,
     onCreateFolder: (target: AppItem, dropped: AppItem) -> Unit,
@@ -105,6 +106,14 @@ fun Workspace(
     var dragging by remember { mutableStateOf<PlacedApp?>(null) }
     var dragPos by remember { mutableStateOf(Offset.Zero) }
     var dragDistance by remember { mutableStateOf(0f) }
+
+    // Folder relocation (kept local: folders never travel to the dock/drawer, so they don't use the
+    // shared cross-surface controller; Workspace owns the gesture, floating preview and drop).
+    var draggingFolder by remember { mutableStateOf<PlacedFolder?>(null) }
+    var folderMoving by remember { mutableStateOf(false) }
+    var folderDragPos by remember { mutableStateOf(Offset.Zero) }
+    // The folder being moved, shown optimistically at its new cell until the DB flow catches up.
+    var folderOptimistic by remember { mutableStateOf<Pair<Long, Triple<Int, Int, Int>>?>(null) }
 
     // The pager ALWAYS carries one extra trailing page (so an icon can be dragged onto a brand new
     // page). The count is kept stable — never toggled by [dragging] — because changing it at pickup
@@ -144,8 +153,25 @@ fun Workspace(
                 optimistic[p.app.key]?.let { (pg, x, y) -> p.copy(page = pg, cellX = x, cellY = y) } ?: p
             }
     }
+    // Clear the folder optimistic override once the DB flow reports the folder at its new cell.
+    LaunchedEffect(folders) {
+        val opt = folderOptimistic
+        if (opt != null && folders.any {
+                it.id == opt.first && it.page == opt.second.first &&
+                    it.cellX == opt.second.second && it.cellY == opt.second.third
+            }
+        ) {
+            folderOptimistic = null
+        }
+    }
+    val effectiveFolders = remember(folders, folderOptimistic) {
+        val opt = folderOptimistic
+        if (opt == null) folders else folders.map { f ->
+            if (f.id == opt.first) f.copy(page = opt.second.first, cellX = opt.second.second, cellY = opt.second.third) else f
+        }
+    }
     // Apps + folders together — what's actually on the grid, used for rendering and occupant lookup.
-    val effectiveEntries: List<HomeEntry> = remember(effectiveApps, folders) { effectiveApps + folders }
+    val effectiveEntries: List<HomeEntry> = remember(effectiveApps, effectiveFolders) { effectiveApps + effectiveFolders }
     // The drag gesture's pointerInput block outlives recomposition (its keys don't include the entry
     // list), so it must read the *latest* placements through this state, not a stale closure capture.
     val latestEntries by rememberUpdatedState(effectiveEntries)
@@ -166,8 +192,8 @@ fun Workspace(
     // Snap back off the always-present trailing page if it settles there empty (so the extra page
     // never feels like a real second page until an icon is dropped onto it).
     val settledPage = pagerState.settledPage
-    LaunchedEffect(settledPage, dragging) {
-        if (dragging == null && settledPage > 0 && effectiveEntries.none { it.page == settledPage }) {
+    LaunchedEffect(settledPage, dragging, draggingFolder) {
+        if (dragging == null && draggingFolder == null && settledPage > 0 && effectiveEntries.none { it.page == settledPage }) {
             val lastContent = effectiveEntries.maxOfOrNull { it.page } ?: 0
             if (settledPage > lastContent) pagerState.animateScrollToPage(lastContent)
         }
@@ -187,10 +213,10 @@ fun Workspace(
         Column(modifier = Modifier.fillMaxSize()) {
             HorizontalPager(
                 state = pagerState,
-                userScrollEnabled = dragging == null,
+                userScrollEnabled = dragging == null && draggingFolder == null,
                 // While dragging, keep every page composed so flipping to another page can't
-                // dispose the dragged icon's node (which would cancel the in-progress drag).
-                beyondViewportPageCount = if (dragging != null) pageCount.coerceAtLeast(0) else 0,
+                // dispose the dragged item's node (which would cancel the in-progress drag).
+                beyondViewportPageCount = if (dragging != null || draggingFolder != null) pageCount.coerceAtLeast(0) else 0,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -207,6 +233,8 @@ fun Workspace(
                             // Placeholder cell: our own in-home drag uses [targetCell]; a dock→home
                             // drag (driven by the shared controller) computes it from the finger.
                             val tc: IntOffset? = when {
+                                // Folder relocation (local) — folders only move within the grid.
+                                draggingFolder != null && folderMoving -> targetCell
                                 // Our own home drag: hide the cell hint while hovering the dock.
                                 dragging != null && dragController.moving -> {
                                     if (dragController.isOverDock(dragController.rootPosition)) null else targetCell
@@ -312,7 +340,94 @@ fun Workspace(
                                             IntOffset((sx * cellW).roundToInt(), (sy * cellH).roundToInt())
                                         }
                                         .size(with(density) { cellW.toDp() }, with(density) { cellH.toDp() })
-                                        .clickable { onOpenFolder(entry) },
+                                        // Hide (but keep composed) the in-grid folder once it's moving;
+                                        // the floating copy is drawn on top. While only lifted it stays.
+                                        .graphicsLayer {
+                                            alpha = if (draggingFolder?.id == entry.id && folderMoving) 0f else 1f
+                                        }
+                                        .pointerInput(
+                                            entry.id, entry.page, entry.cellX, entry.cellY,
+                                            cellW, cellH, columns, rows, pageCount,
+                                        ) {
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                down.consume()
+                                                val slop = viewConfiguration.touchSlop
+                                                var tapped = false
+                                                var swiped = false
+                                                withTimeoutOrNull(
+                                                    viewConfiguration.longPressTimeoutMillis,
+                                                ) {
+                                                    while (true) {
+                                                        val ev = awaitPointerEvent()
+                                                        val c = ev.changes.firstOrNull { it.id == down.id }
+                                                        if (c == null) { swiped = true; return@withTimeoutOrNull }
+                                                        c.consume()
+                                                        if (!c.pressed) { tapped = true; return@withTimeoutOrNull }
+                                                        if ((c.position - down.position).getDistance() > slop) {
+                                                            swiped = true
+                                                            return@withTimeoutOrNull
+                                                        }
+                                                    }
+                                                }
+                                                if (tapped) { onOpenFolder(entry); return@awaitEachGesture }
+                                                if (swiped) return@awaitEachGesture
+                                                // PICK UP the folder
+                                                draggingFolder = entry
+                                                folderMoving = false
+                                                folderDragPos = Offset(
+                                                    entry.cellX * cellW + down.position.x,
+                                                    entry.cellY * cellH + down.position.y,
+                                                )
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                val completed = drag(down.id) { change ->
+                                                    val delta = change.positionChange()
+                                                    change.consume()
+                                                    folderDragPos += delta
+                                                    if (!folderMoving) folderMoving = true
+                                                    if (!pagerState.isScrollInProgress) {
+                                                        if (folderDragPos.x > gridSize.width - edgePx &&
+                                                            pagerState.currentPage < pageCount
+                                                        ) {
+                                                            scope.launch {
+                                                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                                            }
+                                                        } else if (folderDragPos.x < edgePx &&
+                                                            pagerState.currentPage > 0
+                                                        ) {
+                                                            scope.launch {
+                                                                pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                                                            }
+                                                        }
+                                                    }
+                                                    val cx = (folderDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
+                                                    val cy = (folderDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
+                                                    val nc = IntOffset(cx, cy)
+                                                    if (nc != targetCell) targetCell = nc
+                                                }
+                                                targetCell = null
+                                                val f = draggingFolder
+                                                if (f != null && completed && folderMoving) {
+                                                    val tx = (folderDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
+                                                    val ty = (folderDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
+                                                    val targetPage = pagerState.currentPage
+                                                    if (targetPage != f.page || tx != f.cellX || ty != f.cellY) {
+                                                        folderOptimistic = f.id to Triple(targetPage, tx, ty)
+                                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        scope.launch {
+                                                            if (!onMoveFolder(f.id, targetPage, tx, ty)) {
+                                                                folderOptimistic = null
+                                                            }
+                                                        }
+                                                    }
+                                                } else if (f != null && completed) {
+                                                    // No movement → treat as a tap: open the folder.
+                                                    onOpenFolder(f)
+                                                }
+                                                draggingFolder = null
+                                                folderMoving = false
+                                            }
+                                        },
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     FolderIcon(
@@ -554,8 +669,37 @@ fun Workspace(
                 )
             }
         }
-        // The floating dragged icon is drawn by HomeScreen (above both the workspace and the dock),
-        // so it can travel across surfaces. The source icon stays composed but hidden (alpha 0).
+        // The floating dragged *icon* is drawn by LauncherShell (above the workspace, dock and the
+        // drawer) so it can travel across surfaces. A dragged *folder* never leaves the grid, so its
+        // floating preview is drawn here locally, following the finger ([folderDragPos], grid coords).
+        val df = draggingFolder
+        if (df != null && folderMoving) {
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (folderDragPos.x - cellW / 2f).roundToInt(),
+                            (folderDragPos.y - cellH / 2f).roundToInt(),
+                        )
+                    }
+                    .size(with(density) { cellW.toDp() }, with(density) { cellH.toDp() })
+                    .graphicsLayer {
+                        alpha = 0.92f
+                        scaleX = 1.1f
+                        scaleY = 1.1f
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                FolderIcon(
+                    name = df.name,
+                    apps = df.apps,
+                    showLabel = showLabels,
+                    badgeCount = df.apps.sumOf { badges[it.badgeKey] ?: 0 },
+                    badgeShowCount = badgeShowCount,
+                    badgeScale = badgeScale,
+                )
+            }
+        }
     }
 }
 
