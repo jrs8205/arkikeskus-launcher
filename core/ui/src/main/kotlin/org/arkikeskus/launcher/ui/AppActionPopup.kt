@@ -1,10 +1,12 @@
 package org.arkikeskus.launcher.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,8 +21,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -52,6 +59,8 @@ fun AppActionPopup(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val windowWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
     val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val cardWidth = 280.dp
 
@@ -68,38 +77,53 @@ fun AppActionPopup(
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = cardColor,
-            tonalElevation = 3.dp,
-            shadowElevation = 10.dp,
-            modifier = Modifier.width(cardWidth),
-        ) {
-            Column(
-                modifier = Modifier
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(vertical = 8.dp),
+        val cardWidthPx = with(density) { cardWidth.toPx() }
+        val caretWidthPx = with(density) { 22.dp.toPx() }
+        val cardLeft = (anchor.x - cardWidthPx / 2f).coerceIn(
+            POPUP_MARGIN_PX.toFloat(),
+            (windowWidthPx - cardWidthPx - POPUP_MARGIN_PX).coerceAtLeast(POPUP_MARGIN_PX.toFloat()),
+        )
+        val caretStart = with(density) {
+            ((anchor.x - cardLeft) - caretWidthPx / 2f)
+                .coerceIn(14f, cardWidthPx - caretWidthPx - 14f)
+                .toDp()
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (!preferAbove) Caret(pointingUp = true, color = cardColor, modifier = Modifier.padding(start = caretStart))
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = cardColor,
+                tonalElevation = 3.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier.width(cardWidth),
             ) {
-                shortcuts.forEach { shortcut ->
-                    PopupRow(shortcut.label) {
-                        AppShortcuts.start(context, shortcut)
-                        onDismiss()
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(vertical = 8.dp),
+                ) {
+                    shortcuts.forEach { shortcut ->
+                        PopupRow(shortcut.label) {
+                            AppShortcuts.start(context, shortcut)
+                            onDismiss()
+                        }
                     }
-                }
-                if (shortcuts.isNotEmpty()) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 4.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                    )
-                }
-                actions.forEach { action ->
-                    PopupRow(action.label) {
-                        action.onClick()
-                        onDismiss()
+                    if (shortcuts.isNotEmpty()) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+                    actions.forEach { action ->
+                        PopupRow(action.label) {
+                            action.onClick()
+                            onDismiss()
+                        }
                     }
                 }
             }
+            if (preferAbove) Caret(pointingUp = false, color = cardColor, modifier = Modifier.padding(start = caretStart))
         }
     }
 }
@@ -115,6 +139,26 @@ private fun PopupRow(text: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
     )
+}
+
+/** Small triangle that visually ties the popup to the icon it acts on. */
+@Composable
+private fun Caret(pointingUp: Boolean, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(width = 22.dp, height = 10.dp)) {
+        val path = Path().apply {
+            if (pointingUp) {
+                moveTo(0f, size.height)
+                lineTo(size.width / 2f, 0f)
+                lineTo(size.width, size.height)
+            } else {
+                moveTo(0f, 0f)
+                lineTo(size.width / 2f, size.height)
+                lineTo(size.width, 0f)
+            }
+            close()
+        }
+        drawPath(path, color)
+    }
 }
 
 /** Places the menu centered under (or above) the icon, clamped to the screen. */
