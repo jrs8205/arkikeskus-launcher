@@ -362,7 +362,6 @@ fun Workspace(
                         // drives the drawer (finger-following, via onDrawerDrag/Settle); swipe down
                         // opens notifications (one-shot).
                         .pointerInput(swipeUpForDrawer, swipeDownForNotifications) {
-                            val slop = viewConfiguration.touchSlop
                             val velocityTracker = VelocityTracker()
                             var totalDy = 0f
                             var drawerMode = false
@@ -378,7 +377,11 @@ fun Workspace(
                                     totalDy += dy
                                     velocityTracker.addPosition(change.uptimeMillis, change.position)
                                     if (!drawerMode && !notified) {
-                                        if (totalDy < -slop && swipeUpForDrawer) {
+                                        // detectVerticalDragGestures already cleared touch-slop, so the
+                                        // first upward callback IS a real swipe — engage immediately so
+                                        // the drawer "catches" a quick flick instead of needing a long,
+                                        // slow drag. Down still waits a touch to avoid stealing taps.
+                                        if (totalDy < 0f && swipeUpForDrawer) {
                                             drawerMode = true
                                         } else if (totalDy > 30f && swipeDownForNotifications) {
                                             notified = true

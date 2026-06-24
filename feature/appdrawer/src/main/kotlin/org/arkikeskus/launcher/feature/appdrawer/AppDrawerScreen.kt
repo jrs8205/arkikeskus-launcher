@@ -430,13 +430,22 @@ private fun DragHandle() {
     }
 }
 
-/** A drawer folder tile: a rounded 2×2 preview of its first apps + label; tap opens the folder. */
+/** A drawer folder tile: a rounded 2×2 preview of its first apps + label; tap (or long-press, which
+ *  also ticks the haptic like an app long-press) opens the folder. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DrawerFolderTile(folder: DrawerFolderUi, showLabel: Boolean, onClick: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onClick()
+                },
+            )
             .padding(vertical = 10.dp, horizontal = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

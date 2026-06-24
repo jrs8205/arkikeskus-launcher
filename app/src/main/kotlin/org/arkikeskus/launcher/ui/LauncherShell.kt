@@ -89,10 +89,12 @@ fun LauncherShell(
     }
 
     fun settleDrawer(velocityPxPerSec: Float) {
+        // Flick-friendly thresholds: a fairly gentle upward flick opens, and even a short drag past
+        // ~a quarter open completes — so a quick swipe up doesn't fall back closed (matches Pixel feel).
         val target = when {
-            velocityPxPerSec < -700f -> 1f
-            velocityPxPerSec > 700f -> 0f
-            else -> if (progress.value > 0.4f) 1f else 0f
+            velocityPxPerSec < -350f -> 1f
+            velocityPxPerSec > 350f -> 0f
+            else -> if (progress.value > 0.28f) 1f else 0f
         }
         animateProgress(target)
     }
