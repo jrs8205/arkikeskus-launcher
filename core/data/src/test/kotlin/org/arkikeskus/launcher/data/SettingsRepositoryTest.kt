@@ -69,4 +69,24 @@ class SettingsRepositoryTest {
 
         assertThat(repo.dockFavorites.first()).containsExactly("a", "c").inOrder()
     }
+
+    @Test
+    fun `addToDockAt inserts at the given index`() = runTest {
+        val repo = newRepository()
+        listOf("a", "b", "c").forEach { repo.addToDock(it) }
+
+        repo.addToDockAt("x", index = 1)
+
+        assertThat(repo.dockFavorites.first()).containsExactly("a", "x", "b", "c").inOrder()
+    }
+
+    @Test
+    fun `addToDockAt repositions an existing key without duplicating`() = runTest {
+        val repo = newRepository()
+        listOf("a", "b", "c").forEach { repo.addToDock(it) }
+
+        repo.addToDockAt("c", index = 0)
+
+        assertThat(repo.dockFavorites.first()).containsExactly("c", "a", "b").inOrder()
+    }
 }

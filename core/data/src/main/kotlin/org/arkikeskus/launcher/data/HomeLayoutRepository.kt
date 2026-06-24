@@ -46,23 +46,59 @@ class HomeLayoutRepository @Inject constructor(
         db.withTransaction {
             val source = dao.getByKey(appItem.packageName, appItem.className, appItem.userSerial)
                 ?: return@withTransaction false
-            if (source.page == page && source.cellX == cellX && source.cellY == cellY) {
-                return@withTransaction true
-            }
-            val occupant = dao.getAt(page, cellX, cellY)
-            when {
-                occupant == null -> dao.moveById(source.id, page, cellX, cellY)
-                occupant.id == source.id -> Unit
-                else -> {
-                    // Park the source off-grid, slide the occupant into the vacated cell, then land
-                    // the source — keeps the unique index satisfied at every step.
-                    dao.moveById(source.id, TEMP_SLOT, TEMP_SLOT, TEMP_SLOT)
-                    dao.moveById(occupant.id, source.page, source.cellX, source.cellY)
-                    dao.moveById(source.id, page, cellX, cellY)
-                }
-            }
+            moveOrSwap(source, page, cellX, cellY)
             true
         }
+
+    /**
+     * Places [appItem] at (page, cellX, cellY), used when an icon is dragged onto the home screen
+     * from the dock. If the shortcut already exists on home it moves/swaps like [moveItem]; otherwise
+     * it is inserted at the target cell, or — if that cell is occupied — at the first free cell so
+     * the existing icon is never clobbered. [columns] sizes the free-cell search.
+     */
+    suspend fun placeAt(appItem: AppItem, page: Int, cellX: Int, cellY: Int, columns: Int): Boolean =
+        db.withTransaction {
+            val existing = dao.getByKey(appItem.packageName, appItem.className, appItem.userSerial)
+            if (existing != null) {
+                moveOrSwap(existing, page, cellX, cellY)
+                return@withTransaction true
+            }
+            val (p, x, y) = if (dao.getAt(page, cellX, cellY) == null) {
+                Triple(page, cellX, cellY)
+            } else {
+                firstFreeCell(dao.getAll(), columns)
+            }
+            dao.insert(
+                HomeItemEntity(
+                    packageName = appItem.packageName,
+                    className = appItem.className,
+                    userSerial = appItem.userSerial,
+                    page = p,
+                    cellX = x,
+                    cellY = y,
+                ),
+            )
+            true
+        }
+
+    /**
+     * Moves [source] to (page, cellX, cellY), swapping with the cell's current occupant if any.
+     * Must be called inside a [db] transaction: the swap parks [source] in an off-grid slot so the
+     * unique (page, cellX, cellY) index holds at every step.
+     */
+    private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int) {
+        if (source.page == page && source.cellX == cellX && source.cellY == cellY) return
+        val occupant = dao.getAt(page, cellX, cellY)
+        when {
+            occupant == null -> dao.moveById(source.id, page, cellX, cellY)
+            occupant.id == source.id -> Unit
+            else -> {
+                dao.moveById(source.id, TEMP_SLOT, TEMP_SLOT, TEMP_SLOT)
+                dao.moveById(occupant.id, source.page, source.cellX, source.cellY)
+                dao.moveById(source.id, page, cellX, cellY)
+            }
+        }
+    }
 
     /**
      * Repacks every shortcut into the first free cells of a [columns]-wide grid, preserving reading

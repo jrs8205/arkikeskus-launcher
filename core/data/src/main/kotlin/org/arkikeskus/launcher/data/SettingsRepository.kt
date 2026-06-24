@@ -70,6 +70,18 @@ class SettingsRepository @Inject constructor(
     }
 
     /**
+     * Inserts [key] into the dock favorites at [index] (clamped), used when an icon is dragged into
+     * the dock. Any existing occurrence is removed first, so this also re-positions a key already in
+     * the dock and never creates duplicates.
+     */
+    suspend fun addToDockAt(key: String, index: Int) = edit { p ->
+        val current = currentFavorites(p).toMutableList()
+        current.remove(key)
+        current.add(index.coerceIn(0, current.size), key)
+        p[Keys.DOCK_FAVORITES] = current.joinToString("\n")
+    }
+
+    /**
      * Reorders only the currently visible dock favorites while keeping any favorites hidden by the
      * `dockColumns` cap. The dock UI only ever sees the first `dockColumns` keys, so it must not be
      * allowed to overwrite the full list — the hidden tail is preserved after the new visible order.

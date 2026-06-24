@@ -94,4 +94,18 @@ class HomeViewModel @Inject constructor(
     /** Moves/swaps a home shortcut; returns whether the repository accepted it (see [Workspace]). */
     suspend fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int): Boolean =
         homeLayoutRepository.moveItem(appItem, page, cellX, cellY)
+
+    /** Cross-surface: an icon dragged from the dock onto a home cell — place it and leave the dock. */
+    fun moveToHome(appItem: AppItem, page: Int, cellX: Int, cellY: Int) = viewModelScope.launch {
+        val columns = settingsRepository.settings.first().homeColumns
+        if (homeLayoutRepository.placeAt(appItem, page, cellX, cellY, columns)) {
+            settingsRepository.removeFromDock(appItem.key)
+        }
+    }
+
+    /** Cross-surface: a home icon dragged into the dock at [index] — add to dock and leave home. */
+    fun moveToDock(appItem: AppItem, index: Int) = viewModelScope.launch {
+        settingsRepository.addToDockAt(appItem.key, index)
+        homeLayoutRepository.removeFromHome(appItem)
+    }
 }

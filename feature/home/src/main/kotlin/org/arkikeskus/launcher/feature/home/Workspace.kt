@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -33,6 +34,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -72,9 +75,11 @@ fun Workspace(
     swipeUpForDrawer: Boolean,
     swipeDownForNotifications: Boolean,
     homeSignals: Flow<Unit>,
+    dragController: HomeDragController,
     onAppClick: (AppItem) -> Unit,
     onAppMenu: (AppItem) -> Unit,
     onMove: suspend (AppItem, Int, Int, Int) -> Boolean,
+    onMoveToDock: (AppItem, Int) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -101,6 +106,9 @@ fun Workspace(
     // Optimistic placements (key -> page/cellX/cellY) applied on top of [placedApps] until the
     // database flow catches up, so an icon doesn't flash at its old cell for a frame on drop.
     var optimistic by remember { mutableStateOf(emptyMap<String, Triple<Int, Int, Int>>()) }
+    // Keys optimistically removed from home (dragged into the dock) — hidden until the flow drops
+    // them, so the icon doesn't reappear at its old cell for a frame.
+    var removedKeys by remember { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(placedApps) {
         if (optimistic.isNotEmpty()) {
             optimistic = optimistic.filterNot { (key, pos) ->
@@ -110,15 +118,16 @@ fun Workspace(
                 }
             }
         }
+        if (removedKeys.isNotEmpty()) {
+            removedKeys = removedKeys.filterTo(mutableSetOf()) { rk -> placedApps.any { it.app.key == rk } }
+        }
     }
-    val effectiveApps = remember(placedApps, optimistic) {
-        if (optimistic.isEmpty()) {
-            placedApps
-        } else {
-            placedApps.map { p ->
+    val effectiveApps = remember(placedApps, optimistic, removedKeys) {
+        placedApps
+            .filterNot { it.app.key in removedKeys }
+            .map { p ->
                 optimistic[p.app.key]?.let { (pg, x, y) -> p.copy(page = pg, cellX = x, cellY = y) } ?: p
             }
-        }
     }
     // The drag gesture's pointerInput block outlives recomposition (its keys don't include the app
     // list), so it must read the *latest* placements through this state, not a stale closure capture.
@@ -147,6 +156,16 @@ fun Workspace(
         }
     }
 
+    // Publish the grid metrics so a dock→home drop can map the finger's root position to a cell.
+    LaunchedEffect(columns, rows) {
+        dragController.columns = columns
+        dragController.rows = rows
+    }
+    LaunchedEffect(pagerState, pageCount) {
+        snapshotFlow { pagerState.currentPage }
+            .collect { dragController.currentPage = it.coerceIn(0, (pageCount - 1).coerceAtLeast(0)) }
+    }
+
     Box(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
             HorizontalPager(
@@ -158,7 +177,8 @@ fun Workspace(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onSizeChanged { gridSize = it },
+                    .onSizeChanged { gridSize = it }
+                    .onGloballyPositioned { dragController.gridBounds = it.boundsInRoot() },
             ) { page ->
                 Box(
                     modifier = Modifier
@@ -298,6 +318,13 @@ fun Workspace(
                                                 placed.cellX * cellW + down.position.x,
                                                 placed.cellY * cellH + down.position.y,
                                             )
+                                            // Feed the shared controller so HomeScreen draws the
+                                            // floating icon across both surfaces (root coords).
+                                            dragController.start(
+                                                placed.app,
+                                                DragSource.Home,
+                                                dragController.gridBounds.topLeft + dragPos,
+                                            )
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                             // DRAG
                                             val completed = drag(down.id) { change ->
@@ -305,6 +332,9 @@ fun Workspace(
                                                 change.consume()
                                                 dragPos += delta
                                                 dragDistance += delta.getDistance()
+                                                dragController.update(
+                                                    dragController.gridBounds.topLeft + dragPos,
+                                                )
                                                 if (!pagerState.isScrollInProgress) {
                                                     if (dragPos.x > gridSize.width - edgePx &&
                                                         pagerState.currentPage < pageCount
@@ -338,40 +368,60 @@ fun Workspace(
                                             // under a still-pressed finger.
                                             val d = dragging
                                             if (d != null && completed) {
-                                                if (dragDistance < moveThresholdPx) {
-                                                    onAppMenu(d.app)
-                                                } else {
-                                                    val tx = (dragPos.x / cellW).toInt()
-                                                        .coerceIn(0, columns - 1)
-                                                    val ty = (dragPos.y / cellH).toInt()
-                                                        .coerceIn(0, rows - 1)
-                                                    val targetPage = pagerState.currentPage
-                                                    // Whoever sits in the target cell will swap back
-                                                    // into the dragged icon's old cell — mirror that
-                                                    // optimistically so neither flickers nor overlaps.
-                                                    val occupant = latestApps.firstOrNull {
-                                                        it.page == targetPage && it.cellX == tx &&
-                                                            it.cellY == ty && it.app.key != d.app.key
+                                                val rootPos = dragController.gridBounds.topLeft + dragPos
+                                                when {
+                                                    dragDistance < moveThresholdPx -> onAppMenu(d.app)
+
+                                                    // Cross-surface: dropped on the dock.
+                                                    dragController.isOverDock(rootPos) -> {
+                                                        if (dragController.dockHasSpace) {
+                                                            // Hide from home until the flow drops it.
+                                                            removedKeys = removedKeys + d.app.key
+                                                            onMoveToDock(
+                                                                d.app,
+                                                                dragController.dockIndexAt(rootPos),
+                                                            )
+                                                            haptics.performHapticFeedback(
+                                                                HapticFeedbackType.LongPress,
+                                                            )
+                                                        }
+                                                        // Dock full → reject: icon stays on home.
                                                     }
-                                                    val source = Triple(d.page, d.cellX, d.cellY)
-                                                    optimistic = optimistic + buildMap {
-                                                        put(d.app.key, Triple(targetPage, tx, ty))
-                                                        occupant?.let { put(it.app.key, source) }
-                                                    }
-                                                    haptics.performHapticFeedback(
-                                                        HapticFeedbackType.LongPress,
-                                                    )
-                                                    scope.launch {
-                                                        if (!onMove(d.app, targetPage, tx, ty)) {
-                                                            // Rejected (icon vanished) — roll back.
-                                                            optimistic = optimistic - buildList {
-                                                                add(d.app.key)
-                                                                occupant?.let { add(it.app.key) }
+
+                                                    else -> {
+                                                        val tx = (dragPos.x / cellW).toInt()
+                                                            .coerceIn(0, columns - 1)
+                                                        val ty = (dragPos.y / cellH).toInt()
+                                                            .coerceIn(0, rows - 1)
+                                                        val targetPage = pagerState.currentPage
+                                                        // Whoever sits in the target cell swaps back
+                                                        // into the dragged icon's old cell — mirror
+                                                        // that optimistically so neither flickers.
+                                                        val occupant = latestApps.firstOrNull {
+                                                            it.page == targetPage && it.cellX == tx &&
+                                                                it.cellY == ty && it.app.key != d.app.key
+                                                        }
+                                                        val source = Triple(d.page, d.cellX, d.cellY)
+                                                        optimistic = optimistic + buildMap {
+                                                            put(d.app.key, Triple(targetPage, tx, ty))
+                                                            occupant?.let { put(it.app.key, source) }
+                                                        }
+                                                        haptics.performHapticFeedback(
+                                                            HapticFeedbackType.LongPress,
+                                                        )
+                                                        scope.launch {
+                                                            if (!onMove(d.app, targetPage, tx, ty)) {
+                                                                // Rejected — roll back.
+                                                                optimistic = optimistic - buildList {
+                                                                    add(d.app.key)
+                                                                    occupant?.let { add(it.app.key) }
+                                                                }
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
+                                            dragController.stop()
                                             dragging = null
                                         }
                                     },
@@ -399,34 +449,8 @@ fun Workspace(
                 )
             }
         }
-
-        val d = dragging
-        if (d != null) {
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            (dragPos.x - cellW / 2f).roundToInt(),
-                            (dragPos.y - cellH / 2f).roundToInt(),
-                        )
-                    }
-                    .size(with(density) { cellW.toDp() }, with(density) { cellH.toDp() })
-                    .graphicsLayer {
-                        alpha = 0.92f
-                        scaleX = 1.1f
-                        scaleY = 1.1f
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                AppIcon(
-                    appItem = d.app,
-                    labelColor = Color.White,
-                    showLabel = showLabels,
-                    iconSize = 52.dp,
-                    maxLabelLines = 1,
-                )
-            }
-        }
+        // The floating dragged icon is drawn by HomeScreen (above both the workspace and the dock),
+        // so it can travel across surfaces. The source icon stays composed but hidden (alpha 0).
     }
 }
 
