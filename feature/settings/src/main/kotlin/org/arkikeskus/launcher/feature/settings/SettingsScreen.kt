@@ -165,10 +165,11 @@ fun SettingsScreen(
                     description = stringResource(R.string.settings_hidden_apps_desc, hiddenKeys.size),
                 ) { showHiddenManager = true }
                 val newFolderName = stringResource(R.string.drawer_folder_default)
-                val folderCreatedMsg = stringResource(R.string.settings_new_drawer_folder)
+                val folderCreatedMsg = stringResource(R.string.settings_drawer_folder_created)
                 ActionRow(
                     label = stringResource(R.string.settings_new_drawer_folder),
                     description = stringResource(R.string.settings_new_drawer_folder_desc),
+                    trailing = "+",
                 ) {
                     viewModel.createDrawerFolder(newFolderName)
                     android.widget.Toast.makeText(context, folderCreatedMsg, android.widget.Toast.LENGTH_SHORT).show()
@@ -357,14 +358,15 @@ private fun SliderRow(
 
 /** A link-style card: accent title + description, with a trailing chevron. */
 @Composable
-private fun ActionRow(label: String, description: String, onClick: () -> Unit) {
+private fun ActionRow(label: String, description: String, trailing: String = "›", onClick: () -> Unit) {
     val p = LocalSettingsPalette.current
     SettingCard(onClick = onClick) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             Text(description, color = p.dim, fontSize = 12.5.sp)
         }
-        Text("›", color = p.faint, fontSize = 24.sp)
+        // Plus glyph reads as "add"; chevron reads as "opens a sub-screen".
+        Text(trailing, color = if (trailing == "+") Accent else p.faint, fontSize = 24.sp)
     }
 }
 

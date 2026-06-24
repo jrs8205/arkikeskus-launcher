@@ -25,5 +25,6 @@
     <string name="settings_unhide">Show</string>
     <string name="settings_new_drawer_folder">Create folder in app drawer</string>
     <string name="settings_new_drawer_folder_desc">Creates an empty folder you can move apps into</string>
+    <string name="settings_drawer_folder_created">Folder created in app drawer</string>
     <string name="drawer_folder_default">Folder</string>
 </resources>
