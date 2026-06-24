@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -87,6 +88,8 @@ fun Workspace(
     onOpenFolder: (PlacedFolder) -> Unit,
     onCreateFolder: (target: AppItem, dropped: AppItem) -> Unit,
     onAddToFolder: (app: AppItem, folderId: Long) -> Unit,
+    onDrawerDrag: (Float) -> Unit,
+    onDrawerSettle: (Float) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -225,22 +228,40 @@ fun Workspace(
                                 )
                             }
                         }
-                        // Page background — only reached when no icon is under the finger.
+                        // Page background — only reached when no icon is under the finger. Swipe up
+                        // drives the drawer (finger-following, via onDrawerDrag/Settle); swipe down
+                        // opens notifications (one-shot).
                         .pointerInput(swipeUpForDrawer, swipeDownForNotifications) {
-                            var fired = false
+                            val slop = viewConfiguration.touchSlop
+                            val velocityTracker = VelocityTracker()
+                            var totalDy = 0f
+                            var drawerMode = false
+                            var notified = false
                             detectVerticalDragGestures(
-                                onDragStart = { fired = false },
-                                onDragEnd = { fired = false },
-                                onVerticalDrag = { _, dy ->
-                                    if (!fired) {
-                                        if (dy < -30f && swipeUpForDrawer) {
-                                            fired = true
-                                            onOpenDrawer()
-                                        } else if (dy > 30f && swipeDownForNotifications) {
-                                            fired = true
+                                onDragStart = {
+                                    velocityTracker.resetTracking()
+                                    totalDy = 0f
+                                    drawerMode = false
+                                    notified = false
+                                },
+                                onVerticalDrag = { change, dy ->
+                                    totalDy += dy
+                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                    if (!drawerMode && !notified) {
+                                        if (totalDy < -slop && swipeUpForDrawer) {
+                                            drawerMode = true
+                                        } else if (totalDy > 30f && swipeDownForNotifications) {
+                                            notified = true
                                             onOpenNotifications()
                                         }
                                     }
+                                    if (drawerMode) onDrawerDrag(dy)
+                                },
+                                onDragEnd = {
+                                    if (drawerMode) onDrawerSettle(velocityTracker.calculateVelocity().y)
+                                },
+                                onDragCancel = {
+                                    if (drawerMode) onDrawerSettle(0f)
                                 },
                             )
                         }

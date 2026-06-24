@@ -1,29 +1,32 @@
 package org.arkikeskus.launcher.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.feature.appdrawer.AppDrawerScreen
 import org.arkikeskus.launcher.feature.home.HomeScreen
 
 /**
- * Hosts the launcher surface: the home screen with the app drawer as a slide-up overlay.
- * Both BACK and HOME (via [homeSignals]) close the drawer. [onOpenSettings] is triggered by a
- * long-press on the home screen and by tapping the launcher's own icon in the drawer.
+ * Hosts the launcher surface: the home screen with the app drawer as a **finger-following** slide-up
+ * overlay. A swipe up on home drives [progress] (0 = closed, 1 = open) so the drawer tracks the
+ * finger; releasing flings/settles to the nearest end. A pull-down at the top of the drawer (or BACK
+ * / HOME) closes it. [onOpenSettings] is a long-press on home / the launcher's own drawer icon.
  */
 @Composable
 fun LauncherShell(
@@ -31,39 +34,63 @@ fun LauncherShell(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var drawerOpen by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val progress = remember { Animatable(0f) }
+    var shellHeightPx by remember { mutableFloatStateOf(1f) }
+    val drawerVisible by remember { derivedStateOf { progress.value > 0.001f } }
+    val settleSpring = spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMediumLow)
+
+    fun animateProgress(target: Float) {
+        scope.launch { progress.animateTo(target, settleSpring) }
+    }
+
+    fun dragDrawer(dyPx: Float) {
+        // Swipe up (negative dy) increases progress; clamp to [0, 1].
+        scope.launch { progress.snapTo((progress.value - dyPx / shellHeightPx).coerceIn(0f, 1f)) }
+    }
+
+    fun settleDrawer(velocityPxPerSec: Float) {
+        val target = when {
+            velocityPxPerSec < -700f -> 1f
+            velocityPxPerSec > 700f -> 0f
+            else -> if (progress.value > 0.4f) 1f else 0f
+        }
+        animateProgress(target)
+    }
 
     LaunchedEffect(homeSignals) {
-        homeSignals.collect { drawerOpen = false }
+        homeSignals.collect { animateProgress(0f) }
     }
 
-    HomeScreen(
-        onOpenDrawer = { drawerOpen = true },
-        onOpenSettings = onOpenSettings,
-        homeSignals = homeSignals,
-        modifier = modifier.fillMaxSize(),
-    )
-
-    AnimatedVisibility(
-        visible = drawerOpen,
-        enter = slideInVertically(
-            animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-            initialOffsetY = { it },
-        ) + fadeIn(tween(durationMillis = 220)),
-        exit = slideOutVertically(
-            animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-            targetOffsetY = { it },
-        ) + fadeOut(tween(durationMillis = 180)),
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onSizeChanged { shellHeightPx = it.height.toFloat().coerceAtLeast(1f) },
     ) {
-        AppDrawerScreen(
-            onClose = { drawerOpen = false },
-            onOpenSettings = {
-                drawerOpen = false
-                onOpenSettings()
-            },
+        HomeScreen(
+            onOpenDrawer = { animateProgress(1f) },
+            onDrawerDrag = { dragDrawer(it) },
+            onDrawerSettle = { settleDrawer(it) },
+            onOpenSettings = onOpenSettings,
+            homeSignals = homeSignals,
             modifier = Modifier.fillMaxSize(),
         )
+
+        if (drawerVisible) {
+            AppDrawerScreen(
+                onClose = { animateProgress(0f) },
+                onDrawerDrag = { dragDrawer(it) },
+                onDrawerSettle = { settleDrawer(it) },
+                onOpenSettings = {
+                    animateProgress(0f)
+                    onOpenSettings()
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationY = (1f - progress.value) * size.height },
+            )
+        }
     }
 
-    BackHandler(enabled = drawerOpen) { drawerOpen = false }
+    BackHandler(enabled = drawerVisible) { animateProgress(0f) }
 }

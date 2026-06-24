@@ -80,6 +80,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     homeSignals: Flow<Unit> = emptyFlow(),
+    onDrawerDrag: (Float) -> Unit = {},
+    onDrawerSettle: (Float) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -136,6 +138,8 @@ fun HomeScreen(
                 onOpenFolder = { openFolderId = it.id },
                 onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },
                 onAddToFolder = { app, folderId -> viewModel.addToFolder(app, folderId) },
+                onDrawerDrag = onDrawerDrag,
+                onDrawerSettle = onDrawerSettle,
                 onOpenDrawer = onOpenDrawer,
                 onOpenNotifications = { NotificationShade.expand(context) },
                 onOpenSettings = onOpenSettings,

@@ -35,6 +35,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,6 +50,8 @@ fun AppDrawerScreen(
     onClose: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    onDrawerDrag: (Float) -> Unit = {},
+    onDrawerSettle: (Float) -> Unit = {},
     viewModel: AppDrawerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -76,7 +79,8 @@ fun AppDrawerScreen(
             }
         },
         onAppLongClick = { selectedApp = it },
-        onPullDownToClose = onClose,
+        onDrawerDrag = onDrawerDrag,
+        onDrawerSettle = onDrawerSettle,
         showLabels = uiState.showLabels,
         modifier = modifier,
     )
@@ -151,30 +155,42 @@ private fun AppDrawerContent(
     onQueryChange: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
     onAppLongClick: (AppItem) -> Unit,
-    onPullDownToClose: () -> Unit,
+    onDrawerDrag: (Float) -> Unit,
+    onDrawerSettle: (Float) -> Unit,
     showLabels: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // Pull-to-dismiss: when the grid is at the top and the user keeps dragging down, the leftover
-    // (over-scroll) reaches onPostScroll as a positive y; past a threshold we close the drawer.
-    val pullConnection = remember(onPullDownToClose) {
+    // Finger-following pull-to-close: when the grid is at the top and the user keeps dragging down,
+    // the leftover over-scroll reaches onPostScroll as a positive y — feed it to the shared drawer
+    // progress so the drawer tracks the finger; the fling velocity settles it open/closed.
+    val pullConnection = remember(onDrawerDrag, onDrawerSettle) {
         object : NestedScrollConnection {
-            private var pulled = 0f
+            private var pulling = false
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (available.y < 0f) pulled = 0f
+                // While pulling, an upward scroll re-opens the drawer rather than scrolling the list.
+                if (pulling && available.y < 0f) {
+                    onDrawerDrag(available.y)
+                    return available
+                }
                 return Offset.Zero
             }
 
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y > 0f) {
-                    pulled += available.y
-                    if (pulled > 160f) {
-                        pulled = 0f
-                        onPullDownToClose()
-                    }
+                    pulling = true
+                    onDrawerDrag(available.y)
                     return available
                 }
                 return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (pulling) {
+                    pulling = false
+                    onDrawerSettle(available.y)
+                    return available
+                }
+                return Velocity.Zero
             }
         }
     }
