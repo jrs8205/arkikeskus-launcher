@@ -64,8 +64,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withContext
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.AppActionPopup
 import org.arkikeskus.launcher.ui.AppActions
-import org.arkikeskus.launcher.ui.AppShortcuts
+import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.component.AppIcon
 import kotlin.math.roundToInt
 
@@ -206,13 +207,19 @@ fun HomeScreen(
     val menu = menuTarget
     if (menu != null) {
         AppActionPopup(
-            target = menu,
-            onAppInfo = { AppActions.openAppInfo(context, menu.app) },
-            onUninstall = { AppActions.uninstall(context, menu.app) },
-            onRemove = {
-                if (menu.source == DragSource.Dock) viewModel.removeFromDock(menu.app)
-                else viewModel.removeFromHome(menu.app)
-            },
+            app = menu.app,
+            anchor = menu.anchor,
+            preferAbove = menu.source == DragSource.Dock,
+            actions = listOf(
+                PopupAction(stringResource(R.string.app_info)) { AppActions.openAppInfo(context, menu.app) },
+                PopupAction(
+                    stringResource(if (menu.source == DragSource.Dock) R.string.dock_remove else R.string.home_remove),
+                ) {
+                    if (menu.source == DragSource.Dock) viewModel.removeFromDock(menu.app)
+                    else viewModel.removeFromHome(menu.app)
+                },
+                PopupAction(stringResource(R.string.uninstall)) { AppActions.uninstall(context, menu.app) },
+            ),
             onDismiss = { menuTarget = null },
         )
     }
@@ -307,147 +314,4 @@ private fun FolderSheet(
 /** The long-pressed app and where its menu should anchor (which surface it came from). */
 private data class AppMenuTarget(val app: AppItem, val anchor: IntOffset, val source: DragSource)
 
-/** The single Pixel-style long-press menu, anchored to the icon (above it for dock items). */
-@Composable
-private fun AppActionPopup(
-    target: AppMenuTarget,
-    onAppInfo: () -> Unit,
-    onUninstall: () -> Unit,
-    onRemove: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val fromDock = target.source == DragSource.Dock
-    val positionProvider = remember(target.anchor, fromDock) {
-        AnchoredPopupPositionProvider(target.anchor, preferAbove = fromDock)
-    }
-    val context = LocalContext.current
-    // App-specific shortcuts (Pixel-style "New tab" etc.), queried off the main thread.
-    var shortcuts by remember(target.app.key) { mutableStateOf<List<AppShortcuts.Item>>(emptyList()) }
-    LaunchedEffect(target.app.key) {
-        shortcuts = withContext(Dispatchers.IO) { AppShortcuts.query(context, target.app) }
-    }
-    val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    val density = LocalDensity.current
-    val windowWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
-    val cardWidth = 280.dp
-    Popup(
-        popupPositionProvider = positionProvider,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
-    ) {
-        // Compute the caret's x within the (fixed-width) card so it points at the icon even when the
-        // card is clamped to the screen edge — using the same clamp as the position provider.
-        val cardWidthPx = with(density) { cardWidth.toPx() }
-        val caretWidth = 22.dp
-        val caretWidthPx = with(density) { caretWidth.toPx() }
-        val cardLeft = (target.anchor.x - cardWidthPx / 2f).coerceIn(
-            POPUP_MARGIN_PX.toFloat(),
-            (windowWidthPx - cardWidthPx - POPUP_MARGIN_PX).coerceAtLeast(POPUP_MARGIN_PX.toFloat()),
-        )
-        val caretStart = with(density) {
-            ((target.anchor.x - cardLeft) - caretWidthPx / 2f)
-                .coerceIn(14f, cardWidthPx - caretWidthPx - 14f)
-                .toDp()
-        }
-        // Card + a small caret pointing at the icon (above the card for home, below it for dock).
-        Column(modifier = Modifier.width(cardWidth)) {
-            if (!fromDock) {
-                Caret(pointingUp = true, color = cardColor, modifier = Modifier.padding(start = caretStart))
-            }
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = cardColor,
-                tonalElevation = 3.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                ) {
-                    shortcuts.forEach { shortcut ->
-                        PopupRow(shortcut.label) {
-                            AppShortcuts.start(context, shortcut)
-                            onDismiss()
-                        }
-                    }
-                    if (shortcuts.isNotEmpty()) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
-                    PopupRow(stringResource(R.string.app_info)) { onAppInfo(); onDismiss() }
-                    PopupRow(
-                        stringResource(if (fromDock) R.string.dock_remove else R.string.home_remove),
-                    ) { onRemove(); onDismiss() }
-                    PopupRow(stringResource(R.string.uninstall)) { onUninstall(); onDismiss() }
-                }
-            }
-            if (fromDock) {
-                Caret(pointingUp = false, color = cardColor, modifier = Modifier.padding(start = caretStart))
-            }
-        }
-    }
-}
-
-/** Small triangle that visually ties the popup to the icon it acts on. */
-@Composable
-private fun Caret(pointingUp: Boolean, color: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(width = 22.dp, height = 10.dp)) {
-        val path = Path().apply {
-            if (pointingUp) {
-                moveTo(0f, size.height)
-                lineTo(size.width / 2f, 0f)
-                lineTo(size.width, size.height)
-            } else {
-                moveTo(0f, 0f)
-                lineTo(size.width / 2f, size.height)
-                lineTo(size.width, 0f)
-            }
-            close()
-        }
-        drawPath(path, color)
-    }
-}
-
-@Composable
-private fun PopupRow(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
-}
-
-private const val POPUP_MARGIN_PX = 24
-
-/** Places the menu centered under (or above, for dock) the icon, clamped to the screen. */
-private class AnchoredPopupPositionProvider(
-    private val anchor: IntOffset,
-    private val preferAbove: Boolean,
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize,
-    ): IntOffset {
-        val margin = POPUP_MARGIN_PX
-        val x = (anchor.x - popupContentSize.width / 2)
-            .coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
-        val y = if (preferAbove) {
-            (anchor.y - popupContentSize.height - margin).coerceAtLeast(margin)
-        } else {
-            (anchor.y + margin)
-                .coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin))
-        }
-        return IntOffset(x, y)
-    }
-}
+/** The long-press menu is the shared [org.arkikeskus.launcher.ui.AppActionPopup] (core/ui). */

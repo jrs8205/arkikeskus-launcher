@@ -2,14 +2,12 @@ package org.arkikeskus.launcher.feature.appdrawer
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -19,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,14 +31,21 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.math.roundToInt
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.AppActionPopup
 import org.arkikeskus.launcher.ui.AppActions
+import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.component.AppIcon
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +60,8 @@ fun AppDrawerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var selectedApp by remember { mutableStateOf<AppItem?>(null) }
+    var menuTarget by remember { mutableStateOf<Pair<AppItem, IntOffset>?>(null) }
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
 
     val badges = if (uiState.showNotificationDots) uiState.badges else emptyMap()
 
@@ -78,72 +83,42 @@ fun AppDrawerScreen(
                 onClose()
             }
         },
-        onAppLongClick = { selectedApp = it },
+        onAppLongClick = { app, center ->
+            menuTarget = app to IntOffset(center.x.roundToInt(), center.y.roundToInt())
+        },
         onDrawerDrag = onDrawerDrag,
         onDrawerSettle = onDrawerSettle,
         showLabels = uiState.showLabels,
         modifier = modifier,
     )
 
-    val selected = selectedApp
-    if (selected != null) {
-        val inDock = selected.key in uiState.dockKeys
-        ModalBottomSheet(onDismissRequest = { selectedApp = null }) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
-            ) {
-                Text(
-                    text = selected.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
-                val inHome = selected.key in uiState.homeKeys
-                ActionRow(
-                    text = stringResource(
-                        if (inHome) R.string.remove_from_home else R.string.add_to_home,
-                    ),
+    val menu = menuTarget
+    if (menu != null) {
+        val (app, anchor) = menu
+        val inHome = app.key in uiState.homeKeys
+        val inDock = app.key in uiState.dockKeys
+        AppActionPopup(
+            app = app,
+            anchor = anchor,
+            preferAbove = anchor.y > windowHeightPx / 2,
+            actions = listOf(
+                PopupAction(stringResource(R.string.app_info)) { AppActions.openAppInfo(context, app) },
+                PopupAction(
+                    stringResource(if (inHome) R.string.remove_from_home else R.string.add_to_home),
                 ) {
-                    if (inHome) viewModel.removeFromHome(selected) else viewModel.addToHome(selected)
-                    selectedApp = null
-                }
-                ActionRow(
-                    text = stringResource(
-                        if (inDock) R.string.remove_from_dock else R.string.add_to_dock,
-                    ),
+                    if (inHome) viewModel.removeFromHome(app) else viewModel.addToHome(app)
+                },
+                PopupAction(
+                    stringResource(if (inDock) R.string.remove_from_dock else R.string.add_to_dock),
                 ) {
-                    if (inDock) viewModel.removeFromDock(selected) else viewModel.addToDock(selected)
-                    selectedApp = null
-                }
-                ActionRow(stringResource(R.string.app_info)) {
-                    AppActions.openAppInfo(context, selected)
-                    selectedApp = null
-                }
-                ActionRow(stringResource(R.string.hide_app)) {
-                    viewModel.hideApp(selected)
-                    selectedApp = null
-                }
-                ActionRow(stringResource(R.string.uninstall)) {
-                    AppActions.uninstall(context, selected)
-                    selectedApp = null
-                }
-            }
-        }
+                    if (inDock) viewModel.removeFromDock(app) else viewModel.addToDock(app)
+                },
+                PopupAction(stringResource(R.string.hide_app)) { viewModel.hideApp(app) },
+                PopupAction(stringResource(R.string.uninstall)) { AppActions.uninstall(context, app) },
+            ),
+            onDismiss = { menuTarget = null },
+        )
     }
-}
-
-@Composable
-private fun ActionRow(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -158,7 +133,7 @@ private fun AppDrawerContent(
     showSearch: Boolean,
     onQueryChange: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
-    onAppLongClick: (AppItem) -> Unit,
+    onAppLongClick: (AppItem, Offset) -> Unit,
     onDrawerDrag: (Float) -> Unit,
     onDrawerSettle: (Float) -> Unit,
     showLabels: Boolean,
@@ -226,6 +201,7 @@ private fun AppDrawerContent(
                     .padding(horizontal = 12.dp),
             ) {
                 items(items = apps, key = { it.key }, contentType = { "app" }) { app ->
+                    var center by remember { mutableStateOf(Offset.Zero) }
                     AppIcon(
                         appItem = app,
                         labelColor = MaterialTheme.colorScheme.onSurface,
@@ -235,9 +211,10 @@ private fun AppDrawerContent(
                         badgeShowCount = badgeShowCount,
                         badgeScale = badgeScale,
                         modifier = Modifier
+                            .onGloballyPositioned { center = it.boundsInRoot().center }
                             .combinedClickable(
                                 onClick = { onAppClick(app) },
-                                onLongClick = { onAppLongClick(app) },
+                                onLongClick = { onAppLongClick(app, center) },
                             )
                             .padding(vertical = 10.dp, horizontal = 4.dp),
                     )

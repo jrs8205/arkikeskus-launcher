@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +33,9 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.component.AppIcon
 import org.arkikeskus.launcher.ui.component.NotificationBadge
 
 @Composable
@@ -52,9 +58,23 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val s by viewModel.settings.collectAsStateWithLifecycle()
-    val hiddenApps by viewModel.hiddenApps.collectAsStateWithLifecycle()
+    val allApps by viewModel.apps.collectAsStateWithLifecycle()
+    val hiddenKeys by viewModel.hiddenKeys.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val previewIcon = rememberLauncherIconBitmap()
+    var showHiddenManager by remember { mutableStateOf(false) }
+
+    if (showHiddenManager) {
+        HiddenAppsManager(
+            apps = allApps,
+            hiddenKeys = hiddenKeys,
+            onSetHidden = viewModel::setAppHidden,
+            onBack = { showHiddenManager = false },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -84,7 +104,10 @@ fun SettingsScreen(
             StepperRow(stringResource(R.string.settings_columns), s.drawerColumns, 3, 7, viewModel::setDrawerColumns)
             SwitchRow(stringResource(R.string.settings_show_labels), s.showDrawerLabels, viewModel::setShowDrawerLabels)
             SwitchRow(stringResource(R.string.settings_drawer_search), s.showDrawerSearch, viewModel::setShowDrawerSearch)
-            HiddenAppsRow(hidden = hiddenApps, onUnhide = { viewModel.unhideApp(it) })
+            ActionRow(
+                label = stringResource(R.string.settings_hidden_apps),
+                description = stringResource(R.string.settings_hidden_apps_desc, hiddenKeys.size),
+            ) { showHiddenManager = true }
 
             SectionTitle(stringResource(R.string.settings_home))
             StepperRow(stringResource(R.string.settings_columns), s.homeColumns, 3, 7, viewModel::setHomeColumns)
@@ -157,28 +180,56 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
-/** Lists apps hidden from the drawer with a tap-to-unhide action. Hidden via the drawer's menu. */
+/**
+ * Full-screen manager listing every app with a switch — toggle to hide/show it in the app drawer.
+ * (Apps can also be hidden via the drawer long-press, but only restored here.)
+ */
 @Composable
-private fun HiddenAppsRow(hidden: List<AppItem>, onUnhide: (String) -> Unit) {
-    if (hidden.isEmpty()) return
-    Text(
-        text = stringResource(R.string.settings_hidden_apps),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
-    )
-    hidden.forEach { app ->
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(app.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = stringResource(R.string.settings_unhide),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.clickable { onUnhide(app.key) }.padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+private fun HiddenAppsManager(
+    apps: List<AppItem>,
+    hiddenKeys: Set<String>,
+    onSetHidden: (String, Boolean) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BackHandler(onBack = onBack)
+    Surface(modifier = modifier, color = MaterialTheme.colorScheme.background) {
+        Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onBack) { Text("←", style = MaterialTheme.typography.headlineSmall) }
+                Text(
+                    text = stringResource(R.string.settings_hidden_apps),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(items = apps, key = { it.key }) { app ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppIcon(
+                            appItem = app,
+                            labelColor = MaterialTheme.colorScheme.onSurface,
+                            showLabel = false,
+                            iconSize = 40.dp,
+                        )
+                        Text(
+                            text = app.label,
+                            modifier = Modifier.weight(1f).padding(start = 16.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        Switch(
+                            checked = app.key in hiddenKeys,
+                            onCheckedChange = { onSetHidden(app.key, it) },
+                        )
+                    }
+                }
+            }
         }
     }
 }
