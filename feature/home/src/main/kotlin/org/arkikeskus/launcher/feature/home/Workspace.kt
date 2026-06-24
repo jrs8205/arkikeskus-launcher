@@ -186,10 +186,22 @@ fun Workspace(
                         // Drop placeholder, drawn (not composed) so moving it across cells during a
                         // drag never triggers recomposition — keeps the drag smooth.
                         .drawBehind {
-                            val tc = targetCell
-                            if (dragging != null && tc != null &&
-                                page == pagerState.currentPage && cellW > 1f
-                            ) {
+                            val onThisPage = page == pagerState.currentPage && cellW > 1f
+                            // Placeholder cell: our own in-home drag uses [targetCell]; a dock→home
+                            // drag (driven by the shared controller) computes it from the finger.
+                            val tc: IntOffset? = when {
+                                // Our own home drag: hide the cell hint while hovering the dock.
+                                dragging != null ->
+                                    if (dragController.isOverDock(dragController.rootPosition)) null else targetCell
+                                dragController.isDragging &&
+                                    dragController.source == DragSource.Dock &&
+                                    dragController.isOverGrid(dragController.rootPosition) -> {
+                                    val (_, cx, cy) = dragController.cellAt(dragController.rootPosition)
+                                    IntOffset(cx, cy)
+                                }
+                                else -> null
+                            }
+                            if (tc != null && onThisPage) {
                                 drawCircle(
                                     color = Color.White.copy(alpha = 0.32f),
                                     radius = 29.dp.toPx(),

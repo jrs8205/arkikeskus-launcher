@@ -20,3 +20,6 @@ local.properties
 /design-full.png
 /statuspalkki.png
 /Launcher etusivu*.html
+
+# AOSP Launcher3 reference (local only, do not commit)
+Launcher3-*.tar.gz

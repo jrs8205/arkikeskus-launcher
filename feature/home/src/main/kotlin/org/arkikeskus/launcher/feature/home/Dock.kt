@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -63,10 +65,24 @@ fun Dock(
     // One-shot guard so the "reorder started" tick fires once per drag (not every frame).
     val reorderArmed = remember { BooleanArray(1) }
 
+    val shape = RoundedCornerShape(30.dp)
+    // Live drop feedback: highlight when a home icon hovers the dock and there's room (Launcher3's
+    // onDragEnter/acceptDrop). derivedStateOf so we recompose only when crossing in/out, not per frame.
+    val highlighted by remember {
+        derivedStateOf {
+            dragController.isDragging &&
+                dragController.source == DragSource.Home &&
+                dragController.dockHasSpace &&
+                dragController.isOverDock(dragController.rootPosition)
+        }
+    }
+
     Surface(
-        modifier = modifier.onGloballyPositioned { dragController.dockBounds = it.boundsInRoot() },
+        modifier = modifier
+            .onGloballyPositioned { dragController.dockBounds = it.boundsInRoot() }
+            .border(2.dp, Color.White.copy(alpha = if (highlighted) 0.8f else 0f), shape),
         color = Color.Black.copy(alpha = backgroundAlpha),
-        shape = RoundedCornerShape(30.dp),
+        shape = shape,
     ) {
         Row(
             modifier = Modifier
