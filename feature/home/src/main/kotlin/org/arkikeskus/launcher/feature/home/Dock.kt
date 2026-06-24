@@ -45,6 +45,8 @@ import kotlin.math.roundToInt
 @Composable
 fun Dock(
     apps: List<AppItem>,
+    badges: Map<String, Int>,
+    badgeShowCount: Boolean,
     showLabels: Boolean,
     backgroundAlpha: Float,
     dragController: HomeDragController,
@@ -172,6 +174,8 @@ fun Dock(
                         labelColor = Color.White,
                         showLabel = showLabels,
                         iconSize = 52.dp,
+                        badgeCount = badges[app.badgeKey] ?: 0,
+                        badgeShowCount = badgeShowCount,
                     )
                 }
             }

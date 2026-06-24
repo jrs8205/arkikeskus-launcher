@@ -13,4 +13,9 @@
     <string name="settings_show_labels">Show labels</string>
     <string name="settings_dock_bg">Dock background opacity</string>
     <string name="settings_page_indicator">Page dots</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notif_dots">Notification dots</string>
+    <string name="settings_notif_count">Show count</string>
+    <string name="settings_notif_access">Grant notification access</string>
+    <string name="settings_notif_access_desc">Required to show notification dots</string>
 </resources>

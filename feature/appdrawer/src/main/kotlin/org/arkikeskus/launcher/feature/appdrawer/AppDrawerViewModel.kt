@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.data.AppRepository
 import org.arkikeskus.launcher.data.HomeLayoutRepository
+import org.arkikeskus.launcher.data.NotificationBadgeRepository
 import org.arkikeskus.launcher.data.SettingsRepository
 import org.arkikeskus.launcher.model.AppItem
 import javax.inject.Inject
@@ -24,6 +25,9 @@ data class AppDrawerUiState(
     val dockKeys: Set<String> = emptySet(),
     val homeKeys: Set<String> = emptySet(),
     val showLabels: Boolean = true,
+    val badges: Map<String, Int> = emptyMap(),
+    val showNotificationDots: Boolean = true,
+    val notificationDotCount: Boolean = true,
 )
 
 @HiltViewModel
@@ -31,6 +35,7 @@ class AppDrawerViewModel @Inject constructor(
     private val appRepository: AppRepository,
     private val settingsRepository: SettingsRepository,
     private val homeLayoutRepository: HomeLayoutRepository,
+    notificationBadgeRepository: NotificationBadgeRepository,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -54,7 +59,11 @@ class AppDrawerViewModel @Inject constructor(
             dockKeys = favorites.toSet(),
             homeKeys = homeItems.map { it.key }.toSet(),
             showLabels = settings.showDrawerLabels,
+            showNotificationDots = settings.showNotificationDots,
+            notificationDotCount = settings.notificationDotCount,
         )
+    }.combine(notificationBadgeRepository.badges) { state, badges ->
+        state.copy(badges = badges)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),

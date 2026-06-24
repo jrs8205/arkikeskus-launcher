@@ -13,4 +13,7 @@ data class LauncherSettings(
     val showDrawerLabels: Boolean = true,
     val dockBackgroundOpacity: Float = 0.35f,
     val showPageIndicator: Boolean = true,
+    val showNotificationDots: Boolean = true,
+    /** When notification dots are on: true shows the count (Nova-style), false shows a plain dot. */
+    val notificationDotCount: Boolean = true,
 )

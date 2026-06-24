@@ -19,4 +19,7 @@ data class AppItem(
 
     /** Stable identity for list keys and icon cache keys (unique across user profiles). */
     val key: String get() = "$packageName/$className/$userSerial"
+
+    /** Package-level identity (per profile) used to match notification badges. */
+    val badgeKey: String get() = "$packageName/$userSerial"
 }

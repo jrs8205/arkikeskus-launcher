@@ -29,6 +29,8 @@ android {
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(project(":core:data"))
+    implementation(project(":core:model"))
     implementation(project(":feature:home"))
     implementation(project(":feature:appdrawer"))
     implementation(project(":feature:settings"))

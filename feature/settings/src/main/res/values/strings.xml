@@ -13,4 +13,9 @@
     <string name="settings_show_labels">Näytä nimet</string>
     <string name="settings_dock_bg">Dockin taustan läpinäkyvyys</string>
     <string name="settings_page_indicator">Sivupisteet</string>
+    <string name="settings_notifications">Ilmoitukset</string>
+    <string name="settings_notif_dots">Ilmoituspisteet</string>
+    <string name="settings_notif_count">Näytä lukumäärä</string>
+    <string name="settings_notif_access">Myönnä ilmoitusten käyttöoikeus</string>
+    <string name="settings_notif_access_desc">Tarvitaan ilmoituspisteiden näyttämiseen</string>
 </resources>

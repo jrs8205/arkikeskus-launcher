@@ -55,10 +55,14 @@ fun AppDrawerScreen(
     val context = LocalContext.current
     var selectedApp by remember { mutableStateOf<AppItem?>(null) }
 
+    val badges = if (uiState.showNotificationDots) uiState.badges else emptyMap()
+
     AppDrawerContent(
         apps = uiState.apps,
         query = uiState.query,
         columns = uiState.columns,
+        badges = badges,
+        badgeShowCount = uiState.notificationDotCount,
         onQueryChange = viewModel::onQueryChange,
         onAppClick = { app ->
             if (app.packageName == context.packageName) {
@@ -138,6 +142,8 @@ private fun AppDrawerContent(
     apps: List<AppItem>,
     query: String,
     columns: Int,
+    badges: Map<String, Int>,
+    badgeShowCount: Boolean,
     onQueryChange: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
     onAppLongClick: (AppItem) -> Unit,
@@ -199,6 +205,8 @@ private fun AppDrawerContent(
                         labelColor = MaterialTheme.colorScheme.onSurface,
                         showLabel = showLabels,
                         maxLabelLines = 2,
+                        badgeCount = badges[app.badgeKey] ?: 0,
+                        badgeShowCount = badgeShowCount,
                         modifier = Modifier
                             .combinedClickable(
                                 onClick = { onAppClick(app) },

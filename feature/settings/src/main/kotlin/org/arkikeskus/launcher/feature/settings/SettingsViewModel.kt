@@ -42,6 +42,8 @@ class SettingsViewModel @Inject constructor(
     fun setShowDrawerLabels(value: Boolean) = update { repository.setShowDrawerLabels(value) }
     fun setDockBackgroundOpacity(value: Float) = update { repository.setDockBackgroundOpacity(value) }
     fun setShowPageIndicator(value: Boolean) = update { repository.setShowPageIndicator(value) }
+    fun setShowNotificationDots(value: Boolean) = update { repository.setShowNotificationDots(value) }
+    fun setNotificationDotCount(value: Boolean) = update { repository.setNotificationDotCount(value) }
 
     private fun update(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

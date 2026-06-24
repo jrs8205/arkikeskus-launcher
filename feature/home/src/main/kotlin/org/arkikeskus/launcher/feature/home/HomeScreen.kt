@@ -71,6 +71,10 @@ fun HomeScreen(
     // The floating icon is positioned in root coords; subtract this Box's origin to place it locally.
     var screenOrigin by remember { mutableStateOf(Offset.Zero) }
 
+    // Notification badges (empty when disabled), and whether to render the count or a plain dot.
+    val badges = if (settings.showNotificationDots) uiState.badges else emptyMap()
+    val badgeShowCount = settings.notificationDotCount
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -82,6 +86,8 @@ fun HomeScreen(
                 columns = settings.homeColumns,
                 rows = viewModel.rows,
                 placedApps = uiState.placedApps,
+                badges = badges,
+                badgeShowCount = badgeShowCount,
                 showLabels = settings.showHomeLabels,
                 showPageIndicator = settings.showPageIndicator,
                 swipeUpForDrawer = settings.swipeUpForDrawer,
@@ -106,6 +112,8 @@ fun HomeScreen(
             if (settings.dockEnabled && uiState.dockApps.isNotEmpty()) {
                 Dock(
                     apps = uiState.dockApps,
+                    badges = badges,
+                    badgeShowCount = badgeShowCount,
                     showLabels = settings.showDockLabels,
                     backgroundAlpha = settings.dockBackgroundOpacity,
                     dragController = dragController,

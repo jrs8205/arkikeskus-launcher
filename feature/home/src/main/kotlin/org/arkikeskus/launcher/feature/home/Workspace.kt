@@ -70,6 +70,8 @@ fun Workspace(
     columns: Int,
     rows: Int,
     placedApps: List<PlacedApp>,
+    badges: Map<String, Int>,
+    badgeShowCount: Boolean,
     showLabels: Boolean,
     showPageIndicator: Boolean,
     swipeUpForDrawer: Boolean,
@@ -464,6 +466,8 @@ fun Workspace(
                                     showLabel = showLabels,
                                     iconSize = 52.dp,
                                     maxLabelLines = 1,
+                                    badgeCount = badges[placed.app.badgeKey] ?: 0,
+                                    badgeShowCount = badgeShowCount,
                                 )
                             }
                         }

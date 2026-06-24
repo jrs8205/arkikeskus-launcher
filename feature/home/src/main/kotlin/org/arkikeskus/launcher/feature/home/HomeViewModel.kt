@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.data.AppRepository
 import org.arkikeskus.launcher.data.HomeLayoutRepository
+import org.arkikeskus.launcher.data.NotificationBadgeRepository
 import org.arkikeskus.launcher.data.SettingsRepository
 import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.model.LauncherSettings
@@ -30,6 +31,7 @@ data class HomeUiState(
     val dockApps: List<AppItem> = emptyList(),
     val placedApps: List<PlacedApp> = emptyList(),
     val pageCount: Int = 1,
+    val badges: Map<String, Int> = emptyMap(),
 )
 
 @HiltViewModel
@@ -37,6 +39,7 @@ class HomeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val appRepository: AppRepository,
     private val homeLayoutRepository: HomeLayoutRepository,
+    notificationBadgeRepository: NotificationBadgeRepository,
 ) : ViewModel() {
 
     val rows: Int = HomeLayoutRepository.ROWS
@@ -46,7 +49,8 @@ class HomeViewModel @Inject constructor(
         settingsRepository.dockFavorites,
         appRepository.apps,
         homeLayoutRepository.homeItems,
-    ) { settings, favoriteKeys, apps, homeItems ->
+        notificationBadgeRepository.badges,
+    ) { settings, favoriteKeys, apps, homeItems, badges ->
         val byKey = apps.associateBy { it.key }
         val dockApps = favoriteKeys.mapNotNull { byKey[it] }.take(settings.dockColumns)
         val placedApps = homeItems.mapNotNull { e ->
@@ -61,6 +65,7 @@ class HomeViewModel @Inject constructor(
             dockApps = dockApps,
             placedApps = placedApps,
             pageCount = pageCount,
+            badges = badges,
         )
     }.stateIn(
         scope = viewModelScope,

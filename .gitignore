@@ -23,3 +23,7 @@ local.properties
 
 # AOSP Launcher3 reference (local only, do not commit)
 Launcher3-*.tar.gz
+
+# Lawnchair reference (GPL — local only, do NOT commit/redistribute)
+lawnchair-*.zip
+lawnchair-src/
