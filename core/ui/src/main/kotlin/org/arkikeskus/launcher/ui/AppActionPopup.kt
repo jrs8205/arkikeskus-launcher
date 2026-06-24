@@ -1,16 +1,17 @@
 package org.arkikeskus.launcher.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -25,16 +26,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -116,7 +120,7 @@ fun AppActionPopup(
                                 AppShortcuts.start(context, shortcut)
                                 onDismiss()
                             },
-                            onLongClick = onPinShortcut?.let {
+                            onPin = onPinShortcut?.let {
                                 {
                                     it(shortcut)
                                     onDismiss()
@@ -143,19 +147,43 @@ fun AppActionPopup(
     }
 }
 
-/** A shortcut row: tap launches it; a long-press (when [onLongClick] != null) pins it to home. */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * A shortcut row: tap the label launches it; tap the trailing **+** (shown when [onPin] != null) pins
+ * it to the home screen — the + is the affordance that tells the user this shortcut can be pinned.
+ */
 @Composable
-private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
+private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onPin: (() -> Unit)?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+                .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        )
+        if (onPin != null) {
+            Box(
+                modifier = Modifier
+                    .padding(end = 10.dp)
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onPin),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "+",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+    }
 }
 
 @Composable
