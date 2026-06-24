@@ -1,6 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
-import android.content.Context
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -54,10 +56,13 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.withContext
 import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.ui.AppActions
+import org.arkikeskus.launcher.ui.AppShortcuts
 import org.arkikeskus.launcher.ui.component.AppIcon
 import kotlin.math.roundToInt
 
@@ -201,10 +206,6 @@ fun HomeScreen(
                 if (menu.source == DragSource.Dock) viewModel.removeFromDock(menu.app)
                 else viewModel.removeFromHome(menu.app)
             },
-            onAddToOtherSurface = {
-                if (menu.source == DragSource.Dock) viewModel.addToHome(menu.app)
-                else viewModel.addToDock(menu.app)
-            },
             onDismiss = { menuTarget = null },
         )
     }
@@ -306,36 +307,76 @@ private fun AppActionPopup(
     onAppInfo: () -> Unit,
     onUninstall: () -> Unit,
     onRemove: () -> Unit,
-    onAddToOtherSurface: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val fromDock = target.source == DragSource.Dock
     val positionProvider = remember(target.anchor, fromDock) {
         AnchoredPopupPositionProvider(target.anchor, preferAbove = fromDock)
     }
+    val context = LocalContext.current
+    // App-specific shortcuts (Pixel-style "New tab" etc.), queried off the main thread.
+    var shortcuts by remember(target.app.key) { mutableStateOf<List<AppShortcuts.Item>>(emptyList()) }
+    LaunchedEffect(target.app.key) {
+        shortcuts = withContext(Dispatchers.IO) { AppShortcuts.query(context, target.app) }
+    }
+    val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
     Popup(
         popupPositionProvider = positionProvider,
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 3.dp,
-            shadowElevation = 10.dp,
-            modifier = Modifier.widthIn(min = 220.dp, max = 300.dp),
-        ) {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                PopupRow(stringResource(R.string.app_info)) { onAppInfo(); onDismiss() }
-                PopupRow(
-                    stringResource(if (fromDock) R.string.home_add else R.string.home_add_to_dock),
-                ) { onAddToOtherSurface(); onDismiss() }
-                PopupRow(
-                    stringResource(if (fromDock) R.string.dock_remove else R.string.home_remove),
-                ) { onRemove(); onDismiss() }
-                PopupRow(stringResource(R.string.uninstall)) { onUninstall(); onDismiss() }
+        // Card + a small caret pointing at the icon (above the card for home, below it for dock).
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            if (!fromDock) Caret(pointingUp = true, color = cardColor)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = cardColor,
+                tonalElevation = 3.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier.widthIn(min = 240.dp, max = 320.dp),
+            ) {
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    shortcuts.forEach { shortcut ->
+                        PopupRow(shortcut.label) {
+                            AppShortcuts.start(context, shortcut)
+                            onDismiss()
+                        }
+                    }
+                    if (shortcuts.isNotEmpty()) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+                    PopupRow(stringResource(R.string.app_info)) { onAppInfo(); onDismiss() }
+                    PopupRow(
+                        stringResource(if (fromDock) R.string.dock_remove else R.string.home_remove),
+                    ) { onRemove(); onDismiss() }
+                    PopupRow(stringResource(R.string.uninstall)) { onUninstall(); onDismiss() }
+                }
             }
+            if (fromDock) Caret(pointingUp = false, color = cardColor)
         }
+    }
+}
+
+/** Small triangle that visually ties the popup to the icon it acts on. */
+@Composable
+private fun Caret(pointingUp: Boolean, color: Color) {
+    Canvas(modifier = Modifier.size(width = 22.dp, height = 10.dp)) {
+        val path = Path().apply {
+            if (pointingUp) {
+                moveTo(0f, size.height)
+                lineTo(size.width / 2f, 0f)
+                lineTo(size.width, size.height)
+            } else {
+                moveTo(0f, 0f)
+                lineTo(size.width / 2f, size.height)
+                lineTo(size.width, 0f)
+            }
+            close()
+        }
+        drawPath(path, color)
     }
 }
 
