@@ -86,6 +86,7 @@ fun HomeScreen(
     // Notification badges (empty when disabled), and whether to render the count or a plain dot.
     val badges = if (settings.showNotificationDots) uiState.badges else emptyMap()
     val badgeShowCount = settings.notificationDotCount
+    val badgeScale = settings.notificationDotScale
 
     Box(
         modifier = modifier
@@ -100,6 +101,7 @@ fun HomeScreen(
                 entries = uiState.entries,
                 badges = badges,
                 badgeShowCount = badgeShowCount,
+                badgeScale = badgeScale,
                 showLabels = settings.showHomeLabels,
                 showPageIndicator = settings.showPageIndicator,
                 swipeUpForDrawer = settings.swipeUpForDrawer,
@@ -129,6 +131,7 @@ fun HomeScreen(
                     apps = uiState.dockApps,
                     badges = badges,
                     badgeShowCount = badgeShowCount,
+                    badgeScale = badgeScale,
                     showLabels = settings.showDockLabels,
                     backgroundAlpha = settings.dockBackgroundOpacity,
                     dragController = dragController,
@@ -269,6 +272,7 @@ fun HomeScreen(
             folder = openFolder,
             badges = badges,
             badgeShowCount = badgeShowCount,
+            badgeScale = badgeScale,
             onRename = { viewModel.renameFolder(openFolder.id, it) },
             onAppClick = { viewModel.launch(it) },
             onRemoveFromFolder = { viewModel.removeFromFolder(it, openFolder.id) },
@@ -283,6 +287,7 @@ private fun FolderSheet(
     folder: PlacedFolder,
     badges: Map<String, Int>,
     badgeShowCount: Boolean,
+    badgeScale: Float,
     onRename: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
     onRemoveFromFolder: (AppItem) -> Unit,
@@ -325,6 +330,7 @@ private fun FolderSheet(
                         maxLabelLines = 2,
                         badgeCount = badges[app.badgeKey] ?: 0,
                         badgeShowCount = badgeShowCount,
+                        badgeScale = badgeScale,
                         modifier = Modifier
                             .combinedClickable(
                                 onClick = {

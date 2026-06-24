@@ -63,6 +63,7 @@ fun AppDrawerScreen(
         columns = uiState.columns,
         badges = badges,
         badgeShowCount = uiState.notificationDotCount,
+        badgeScale = uiState.notificationDotScale,
         onQueryChange = viewModel::onQueryChange,
         onAppClick = { app ->
             if (app.packageName == context.packageName) {
@@ -144,6 +145,7 @@ private fun AppDrawerContent(
     columns: Int,
     badges: Map<String, Int>,
     badgeShowCount: Boolean,
+    badgeScale: Float,
     onQueryChange: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
     onAppLongClick: (AppItem) -> Unit,
@@ -207,6 +209,7 @@ private fun AppDrawerContent(
                         maxLabelLines = 2,
                         badgeCount = badges[app.badgeKey] ?: 0,
                         badgeShowCount = badgeShowCount,
+                        badgeScale = badgeScale,
                         modifier = Modifier
                             .combinedClickable(
                                 onClick = { onAppClick(app) },

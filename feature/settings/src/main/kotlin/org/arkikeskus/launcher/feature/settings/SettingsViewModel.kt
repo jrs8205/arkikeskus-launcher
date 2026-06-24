@@ -44,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     fun setShowPageIndicator(value: Boolean) = update { repository.setShowPageIndicator(value) }
     fun setShowNotificationDots(value: Boolean) = update { repository.setShowNotificationDots(value) }
     fun setNotificationDotCount(value: Boolean) = update { repository.setNotificationDotCount(value) }
+    fun setNotificationDotScale(value: Float) = update { repository.setNotificationDotScale(value) }
 
     private fun update(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

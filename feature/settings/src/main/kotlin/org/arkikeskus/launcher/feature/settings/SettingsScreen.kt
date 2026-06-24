@@ -76,6 +76,12 @@ fun SettingsScreen(
             SectionTitle(stringResource(R.string.settings_notifications))
             SwitchRow(stringResource(R.string.settings_notif_dots), s.showNotificationDots, viewModel::setShowNotificationDots)
             SwitchRow(stringResource(R.string.settings_notif_count), s.notificationDotCount, viewModel::setNotificationDotCount)
+            SliderRow(
+                label = stringResource(R.string.settings_notif_size),
+                value = s.notificationDotScale,
+                onValueChange = viewModel::setNotificationDotScale,
+                valueRange = 0.6f..1.8f,
+            )
             ActionRow(
                 label = stringResource(R.string.settings_notif_access),
                 description = stringResource(R.string.settings_notif_access_desc),
@@ -145,10 +151,15 @@ private fun ActionRow(label: String, description: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SliderRow(label: String, value: Float, onValueChange: (Float) -> Unit) {
+private fun SliderRow(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+) {
     Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
-        Slider(value = value, onValueChange = onValueChange, valueRange = 0f..1f)
+        Slider(value = value, onValueChange = onValueChange, valueRange = valueRange)
     }
 }
 

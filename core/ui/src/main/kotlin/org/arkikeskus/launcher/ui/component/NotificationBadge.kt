@@ -21,25 +21,26 @@ private val NotificationDotColor = Color(0xFFE53935)
 
 /**
  * A notification badge: a numeric count (Nova-style) when [showCount] is true, otherwise a plain dot
- * (Pixel-style). Shared by [AppIcon] and the home-screen folder icon.
+ * (Pixel-style). [scale] multiplies the size (1.0 = default). Shared by [AppIcon] and the folder icon.
  */
 @Composable
-fun NotificationBadge(count: Int, showCount: Boolean, modifier: Modifier = Modifier) {
+fun NotificationBadge(count: Int, showCount: Boolean, scale: Float = 1f, modifier: Modifier = Modifier) {
     if (count <= 0) return
+    val s = scale.coerceIn(0.5f, 2.5f)
     if (showCount) {
         Box(
             modifier = modifier
-                .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
-                .border(1.5.dp, Color.White, CircleShape)
+                .defaultMinSize(minWidth = (16 * s).dp, minHeight = (16 * s).dp)
+                .border((1.5f * s).dp, Color.White, CircleShape)
                 .background(NotificationDotColor, CircleShape)
-                .padding(horizontal = 4.dp),
+                .padding(horizontal = (4 * s).dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = if (count > 99) "99+" else count.toString(),
                 color = Color.White,
-                fontSize = 9.sp,
-                lineHeight = 10.sp,
+                fontSize = (9 * s).sp,
+                lineHeight = (10 * s).sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
@@ -47,8 +48,8 @@ fun NotificationBadge(count: Int, showCount: Boolean, modifier: Modifier = Modif
     } else {
         Box(
             modifier = modifier
-                .size(11.dp)
-                .border(1.5.dp, Color.White, CircleShape)
+                .size((11 * s).dp)
+                .border((1.5f * s).dp, Color.White, CircleShape)
                 .background(NotificationDotColor, CircleShape),
         )
     }

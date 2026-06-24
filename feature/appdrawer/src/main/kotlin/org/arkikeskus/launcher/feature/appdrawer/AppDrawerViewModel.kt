@@ -29,6 +29,7 @@ data class AppDrawerUiState(
     val badges: Map<String, Int> = emptyMap(),
     val showNotificationDots: Boolean = true,
     val notificationDotCount: Boolean = true,
+    val notificationDotScale: Float = 1f,
 )
 
 @HiltViewModel
@@ -66,6 +67,7 @@ class AppDrawerViewModel @Inject constructor(
             showLabels = settings.showDrawerLabels,
             showNotificationDots = settings.showNotificationDots,
             notificationDotCount = settings.notificationDotCount,
+            notificationDotScale = settings.notificationDotScale,
         )
     }.combine(notificationBadgeRepository.badges) { state, badges ->
         state.copy(badges = badges)

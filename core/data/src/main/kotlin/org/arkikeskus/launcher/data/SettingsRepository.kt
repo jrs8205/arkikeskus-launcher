@@ -39,6 +39,7 @@ class SettingsRepository @Inject constructor(
             showPageIndicator = p[Keys.SHOW_PAGE_INDICATOR] ?: true,
             showNotificationDots = p[Keys.SHOW_NOTIF_DOTS] ?: true,
             notificationDotCount = p[Keys.NOTIF_DOT_COUNT] ?: true,
+            notificationDotScale = p[Keys.NOTIF_DOT_SCALE] ?: 1.0f,
         )
     }
 
@@ -60,6 +61,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setShowPageIndicator(value: Boolean) = edit { it[Keys.SHOW_PAGE_INDICATOR] = value }
     suspend fun setShowNotificationDots(value: Boolean) = edit { it[Keys.SHOW_NOTIF_DOTS] = value }
     suspend fun setNotificationDotCount(value: Boolean) = edit { it[Keys.NOTIF_DOT_COUNT] = value }
+    suspend fun setNotificationDotScale(value: Float) = edit { it[Keys.NOTIF_DOT_SCALE] = value }
 
     suspend fun addToDock(key: String) = edit { p ->
         val current = currentFavorites(p).toMutableList()
@@ -118,5 +120,6 @@ class SettingsRepository @Inject constructor(
         val SHOW_PAGE_INDICATOR = booleanPreferencesKey("show_page_indicator")
         val SHOW_NOTIF_DOTS = booleanPreferencesKey("show_notif_dots")
         val NOTIF_DOT_COUNT = booleanPreferencesKey("notif_dot_count")
+        val NOTIF_DOT_SCALE = floatPreferencesKey("notif_dot_scale")
     }
 }

@@ -73,6 +73,7 @@ fun Workspace(
     entries: List<HomeEntry>,
     badges: Map<String, Int>,
     badgeShowCount: Boolean,
+    badgeScale: Float,
     showLabels: Boolean,
     showPageIndicator: Boolean,
     swipeUpForDrawer: Boolean,
@@ -299,6 +300,7 @@ fun Workspace(
                                         showLabel = showLabels,
                                         badgeCount = folderBadge,
                                         badgeShowCount = badgeShowCount,
+                                        badgeScale = badgeScale,
                                     )
                                 }
                             }
@@ -506,6 +508,7 @@ fun Workspace(
                                     maxLabelLines = 1,
                                     badgeCount = badges[placed.app.badgeKey] ?: 0,
                                     badgeShowCount = badgeShowCount,
+                                    badgeScale = badgeScale,
                                 )
                             }
                             }

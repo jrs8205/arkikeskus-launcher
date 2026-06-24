@@ -34,6 +34,7 @@ fun AppIcon(
     maxLabelLines: Int = 1,
     badgeCount: Int = 0,
     badgeShowCount: Boolean = true,
+    badgeScale: Float = 1f,
 ) {
     Column(
         modifier = modifier,
@@ -45,7 +46,7 @@ fun AppIcon(
                 contentDescription = appItem.label,
                 modifier = Modifier.size(iconSize),
             )
-            NotificationBadge(count = badgeCount, showCount = badgeShowCount)
+            NotificationBadge(count = badgeCount, showCount = badgeShowCount, scale = badgeScale)
         }
         if (showLabel) {
             Spacer(Modifier.height(4.dp))

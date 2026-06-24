@@ -16,4 +16,6 @@ data class LauncherSettings(
     val showNotificationDots: Boolean = true,
     /** When notification dots are on: true shows the count (Nova-style), false shows a plain dot. */
     val notificationDotCount: Boolean = true,
+    /** Size multiplier for the notification dot/badge (1.0 = default). */
+    val notificationDotScale: Float = 1.0f,
 )

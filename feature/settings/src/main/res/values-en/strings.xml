@@ -18,4 +18,5 @@
     <string name="settings_notif_count">Show count</string>
     <string name="settings_notif_access">Grant notification access</string>
     <string name="settings_notif_access_desc">Required to show notification dots</string>
+    <string name="settings_notif_size">Notification dot size</string>
 </resources>

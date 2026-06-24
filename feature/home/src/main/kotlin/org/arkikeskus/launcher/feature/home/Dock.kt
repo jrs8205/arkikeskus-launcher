@@ -47,6 +47,7 @@ fun Dock(
     apps: List<AppItem>,
     badges: Map<String, Int>,
     badgeShowCount: Boolean,
+    badgeScale: Float,
     showLabels: Boolean,
     backgroundAlpha: Float,
     dragController: HomeDragController,
@@ -176,6 +177,7 @@ fun Dock(
                         iconSize = 52.dp,
                         badgeCount = badges[app.badgeKey] ?: 0,
                         badgeShowCount = badgeShowCount,
+                        badgeScale = badgeScale,
                     )
                 }
             }

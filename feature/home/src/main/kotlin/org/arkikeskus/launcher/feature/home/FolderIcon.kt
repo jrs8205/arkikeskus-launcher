@@ -34,6 +34,7 @@ fun FolderIcon(
     showLabel: Boolean,
     badgeCount: Int,
     badgeShowCount: Boolean,
+    badgeScale: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -50,7 +51,7 @@ fun FolderIcon(
                     PreviewRow(apps.getOrNull(2), apps.getOrNull(3))
                 }
             }
-            NotificationBadge(count = badgeCount, showCount = badgeShowCount)
+            NotificationBadge(count = badgeCount, showCount = badgeShowCount, scale = badgeScale)
         }
         if (showLabel) {
             Spacer(Modifier.height(4.dp))
