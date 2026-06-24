@@ -291,7 +291,10 @@ fun Workspace(
                                 }
                                 // Fired only on a still empty-area hold. If an icon picked up
                                 // (dragging != null) the hold belonged to that icon, not settings.
-                                if (held == null && !resolved && dragging == null) onOpenSettings()
+                                if (held == null && !resolved && dragging == null) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onOpenSettings()
+                                }
                             }
                         },
                 ) {

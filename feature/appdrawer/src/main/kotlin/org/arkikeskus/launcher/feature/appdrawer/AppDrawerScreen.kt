@@ -23,6 +23,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -46,6 +48,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 import org.arkikeskus.launcher.model.AppItem
@@ -67,12 +71,18 @@ fun AppDrawerScreen(
     onDrawerSettle: (Float) -> Unit = {},
     dragController: HomeDragController = rememberHomeDragController(),
     onDragOutStart: () -> Unit = {},
+    homeSignals: Flow<Unit> = emptyFlow(),
     viewModel: AppDrawerViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var menuTarget by remember { mutableStateOf<Pair<AppItem, IntOffset>?>(null) }
+    var menuTarget by remember { mutableStateOf<Pair<AppItem, Rect>?>(null) }
     val windowHeightPx = LocalWindowInfo.current.containerSize.height
+
+    // HOME pressed → dismiss the popup at once, so it doesn't linger after the drawer slides away.
+    LaunchedEffect(homeSignals) {
+        homeSignals.collect { menuTarget = null }
+    }
 
     val badges = if (uiState.showNotificationDots) uiState.badges else emptyMap()
 
@@ -94,9 +104,7 @@ fun AppDrawerScreen(
                 onClose()
             }
         },
-        onAppLongClick = { app, center ->
-            menuTarget = app to IntOffset(center.x.roundToInt(), center.y.roundToInt())
-        },
+        onAppLongClick = { app, bounds -> menuTarget = app to bounds },
         onDrawerDrag = onDrawerDrag,
         onDrawerSettle = onDrawerSettle,
         dragController = dragController,
@@ -109,13 +117,18 @@ fun AppDrawerScreen(
 
     val menu = menuTarget
     if (menu != null) {
-        val (app, anchor) = menu
+        val (app, bounds) = menu
         val inHome = app.key in uiState.homeKeys
         val inDock = app.key in uiState.dockKeys
+        // Anchor to the icon's edge (not its centre) so the popup clears it with a small gap: below
+        // the cell for top-half icons, above it for bottom-half ones.
+        val preferAbove = bounds.center.y > windowHeightPx / 2
+        val anchorY = (if (preferAbove) bounds.top else bounds.bottom).roundToInt()
+        val anchor = IntOffset(bounds.center.x.roundToInt(), anchorY)
         AppActionPopup(
             app = app,
             anchor = anchor,
-            preferAbove = anchor.y > windowHeightPx / 2,
+            preferAbove = preferAbove,
             actions = listOf(
                 PopupAction(stringResource(R.string.app_info)) { AppActions.openAppInfo(context, app) },
                 PopupAction(
@@ -148,7 +161,7 @@ private fun AppDrawerContent(
     showSearch: Boolean,
     onQueryChange: (String) -> Unit,
     onAppClick: (AppItem) -> Unit,
-    onAppLongClick: (AppItem, Offset) -> Unit,
+    onAppLongClick: (AppItem, Rect) -> Unit,
     onDrawerDrag: (Float) -> Unit,
     onDrawerSettle: (Float) -> Unit,
     dragController: HomeDragController,
@@ -221,8 +234,7 @@ private fun AppDrawerContent(
                     .padding(horizontal = 12.dp),
             ) {
                 items(items = apps, key = { it.key }, contentType = { "app" }) { app ->
-                    var center by remember { mutableStateOf(Offset.Zero) }
-                    var itemRoot by remember { mutableStateOf(Offset.Zero) }
+                    var bounds by remember { mutableStateOf(Rect.Zero) }
                     AppIcon(
                         appItem = app,
                         labelColor = MaterialTheme.colorScheme.onSurface,
@@ -232,11 +244,7 @@ private fun AppDrawerContent(
                         badgeShowCount = badgeShowCount,
                         badgeScale = badgeScale,
                         modifier = Modifier
-                            .onGloballyPositioned {
-                                val b = it.boundsInRoot()
-                                center = b.center
-                                itemRoot = b.topLeft
-                            }
+                            .onGloballyPositioned { bounds = it.boundsInRoot() }
                             // One unified gesture (like Workspace/Dock) but non-consuming until the
                             // long-press fires, so a quick drag still scrolls the grid: quick tap
                             // launches; a still long-press lifts → drag out to home/dock, or with no
@@ -276,19 +284,27 @@ private fun AppDrawerContent(
                                         2 -> return@awaitEachGesture
                                     }
                                     // LONG PRESS → lift into the shared controller (drawer source).
-                                    // The finger's root position is [itemRoot] (captured while the
-                                    // drawer is open) plus the pointer's local position. The drawer is
-                                    // hidden with alpha (not translated) during the drag, so its local
-                                    // coordinate space stays put and this stays accurate.
-                                    dragController.start(app, DragSource.Drawer, itemRoot + down.position)
+                                    // The finger's root position is the icon's [bounds] top-left
+                                    // (captured while the drawer is open) plus the pointer's local
+                                    // position. The drawer is hidden with alpha (not translated) during
+                                    // the drag, so its local coordinate space stays put and this stays
+                                    // accurate.
+                                    dragController.start(app, DragSource.Drawer, bounds.topLeft + down.position)
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     val completed = drag(down.id) { change ->
                                         change.consume()
-                                        if (!dragController.moving) {
+                                        // Only commit to a drag-out once the finger has moved past the
+                                        // slop — otherwise a still long-press (with finger jitter) would
+                                        // collapse the drawer instead of just showing the menu.
+                                        if (!dragController.moving &&
+                                            (change.position - down.position).getDistance() > slop
+                                        ) {
                                             dragController.beginMove()
                                             onDragOutStart()
                                         }
-                                        dragController.update(itemRoot + change.position)
+                                        if (dragController.moving) {
+                                            dragController.update(bounds.topLeft + change.position)
+                                        }
                                     }
                                     if (completed && dragController.moving) {
                                         val root = dragController.rootPosition
@@ -302,8 +318,8 @@ private fun AppDrawerContent(
                                         }
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     } else if (completed) {
-                                        // No movement → static long-press → show the menu.
-                                        onAppLongClick(app, center)
+                                        // No movement → static long-press → show the menu by the icon.
+                                        onAppLongClick(app, bounds)
                                     }
                                     dragController.stop()
                                 }

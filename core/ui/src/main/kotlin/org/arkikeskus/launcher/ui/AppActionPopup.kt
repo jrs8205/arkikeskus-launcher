@@ -89,7 +89,10 @@ fun AppActionPopup(
                 .toDp()
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            if (!preferAbove) Caret(pointingUp = true, color = cardColor, modifier = Modifier.padding(start = caretStart))
+            // The caret is left-aligned (not centered) so [caretStart] is a true offset from the
+            // card's left edge — otherwise the Column would re-centre it and it would miss the icon
+            // for off-centre anchors (e.g. an edge column in a 6-wide drawer).
+            if (!preferAbove) Caret(pointingUp = true, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = cardColor,
@@ -123,7 +126,7 @@ fun AppActionPopup(
                     }
                 }
             }
-            if (preferAbove) Caret(pointingUp = false, color = cardColor, modifier = Modifier.padding(start = caretStart))
+            if (preferAbove) Caret(pointingUp = false, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
         }
     }
 }

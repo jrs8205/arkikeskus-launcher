@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -69,6 +70,12 @@ fun LauncherShell(
         derivedStateOf { dragController.isDragging && dragController.source == DragSource.Drawer }
     }
     val drawerMounted by remember { derivedStateOf { drawerOpen || draggingFromDrawer } }
+    // Smoothly cross-fade the drawer out as a drag-out begins (instead of a hard cut), then reset.
+    val dragOutAlpha = remember { Animatable(1f) }
+    LaunchedEffect(draggingFromDrawer) {
+        if (draggingFromDrawer) dragOutAlpha.animateTo(0f, tween(durationMillis = 180))
+        else dragOutAlpha.snapTo(1f)
+    }
 
     fun animateProgress(target: Float) {
         scope.launch { progress.animateTo(target, settleSpring) }
@@ -118,6 +125,7 @@ fun LauncherShell(
                     onOpenSettings()
                 },
                 dragController = dragController,
+                homeSignals = homeSignals,
                 // First movement of a drag-out reveals home/dock to drop onto. The drawer is hidden
                 // with alpha rather than translated, so its (still-mounted) gesture keeps reporting
                 // accurate local coordinates; progress is snapped shut so it's closed after the drop.
@@ -126,7 +134,7 @@ fun LauncherShell(
                     .fillMaxSize()
                     .graphicsLayer {
                         if (draggingFromDrawer) {
-                            alpha = 0f
+                            alpha = dragOutAlpha.value
                         } else {
                             translationY = (1f - progress.value) * size.height
                         }
