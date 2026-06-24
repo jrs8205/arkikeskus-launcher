@@ -7,35 +7,61 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface HomeItemDao {
-    @Query("SELECT * FROM home_items ORDER BY page ASC, cellY ASC, cellX ASC")
+    /** Every row (home items, folders, and folder children) — the ViewModel partitions by container. */
+    @Query("SELECT * FROM home_items ORDER BY containerId ASC, page ASC, cellY ASC, cellX ASC")
     fun observeAll(): Flow<List<HomeItemEntity>>
 
-    @Query("SELECT * FROM home_items ORDER BY page ASC, cellY ASC, cellX ASC")
-    suspend fun getAllOrdered(): List<HomeItemEntity>
+    @Query("SELECT * FROM home_items WHERE containerId = :containerId ORDER BY page ASC, cellY ASC, cellX ASC")
+    suspend fun getContainerOrdered(containerId: Long): List<HomeItemEntity>
 
-    @Query("SELECT * FROM home_items")
-    suspend fun getAll(): List<HomeItemEntity>
+    @Query("SELECT * FROM home_items WHERE containerId = :containerId")
+    suspend fun getContainer(containerId: Long): List<HomeItemEntity>
+
+    @Query("SELECT * FROM home_items WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): HomeItemEntity?
 
     @Query(
-        "SELECT * FROM home_items WHERE packageName = :pkg AND className = :cls AND userSerial = :user LIMIT 1",
+        "SELECT * FROM home_items WHERE containerId = :containerId AND packageName = :pkg " +
+            "AND className = :cls AND userSerial = :user LIMIT 1",
     )
-    suspend fun getByKey(pkg: String, cls: String, user: Long): HomeItemEntity?
+    suspend fun getByKey(containerId: Long, pkg: String, cls: String, user: Long): HomeItemEntity?
 
-    @Query("SELECT * FROM home_items WHERE page = :page AND cellX = :cellX AND cellY = :cellY LIMIT 1")
-    suspend fun getAt(page: Int, cellX: Int, cellY: Int): HomeItemEntity?
+    @Query(
+        "SELECT * FROM home_items WHERE containerId = :containerId AND page = :page " +
+            "AND cellX = :cellX AND cellY = :cellY LIMIT 1",
+    )
+    suspend fun getAt(containerId: Long, page: Int, cellX: Int, cellY: Int): HomeItemEntity?
 
     @Insert
-    suspend fun insert(item: HomeItemEntity)
+    suspend fun insert(item: HomeItemEntity): Long
 
-    @Query("DELETE FROM home_items WHERE packageName = :pkg AND className = :cls AND userSerial = :user")
-    suspend fun deleteByKey(pkg: String, cls: String, user: Long)
+    @Query("DELETE FROM home_items WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query(
+        "DELETE FROM home_items WHERE containerId = :containerId AND packageName = :pkg " +
+            "AND className = :cls AND userSerial = :user",
+    )
+    suspend fun deleteByKey(containerId: Long, pkg: String, cls: String, user: Long)
 
     @Query("DELETE FROM home_items")
     suspend fun clear()
 
-    @Query("SELECT COUNT(*) FROM home_items WHERE packageName = :pkg AND className = :cls AND userSerial = :user")
-    suspend fun count(pkg: String, cls: String, user: Long): Int
+    @Query(
+        "SELECT COUNT(*) FROM home_items WHERE containerId = :containerId AND packageName = :pkg " +
+            "AND className = :cls AND userSerial = :user",
+    )
+    suspend fun count(containerId: Long, pkg: String, cls: String, user: Long): Int
 
-    @Query("UPDATE home_items SET page = :page, cellX = :cellX, cellY = :cellY WHERE id = :id")
-    suspend fun moveById(id: Long, page: Int, cellX: Int, cellY: Int)
+    @Query("SELECT COUNT(*) FROM home_items WHERE containerId = :containerId")
+    suspend fun childCount(containerId: Long): Int
+
+    @Query(
+        "UPDATE home_items SET containerId = :containerId, page = :page, cellX = :cellX, cellY = :cellY " +
+            "WHERE id = :id",
+    )
+    suspend fun moveById(id: Long, containerId: Long, page: Int, cellX: Int, cellY: Int)
+
+    @Query("UPDATE home_items SET folderName = :name WHERE id = :id")
+    suspend fun renameFolder(id: Long, name: String)
 }

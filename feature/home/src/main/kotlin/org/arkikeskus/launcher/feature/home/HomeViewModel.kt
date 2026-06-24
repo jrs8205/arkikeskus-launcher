@@ -14,22 +14,40 @@ import org.arkikeskus.launcher.data.AppRepository
 import org.arkikeskus.launcher.data.HomeLayoutRepository
 import org.arkikeskus.launcher.data.NotificationBadgeRepository
 import org.arkikeskus.launcher.data.SettingsRepository
+import org.arkikeskus.launcher.data.local.HomeItemEntity
 import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.model.LauncherSettings
 import javax.inject.Inject
 
+/** Something placed at a free cell on a home page — an app shortcut or a folder. */
+sealed interface HomeEntry {
+    val page: Int
+    val cellX: Int
+    val cellY: Int
+}
+
 /** An app shortcut placed at a free cell on a home page. */
 data class PlacedApp(
     val app: AppItem,
-    val page: Int,
-    val cellX: Int,
-    val cellY: Int,
-)
+    override val page: Int,
+    override val cellX: Int,
+    override val cellY: Int,
+) : HomeEntry
+
+/** A folder placed at a free cell, holding [apps] (resolved, in order). */
+data class PlacedFolder(
+    val id: Long,
+    val name: String,
+    val apps: List<AppItem>,
+    override val page: Int,
+    override val cellX: Int,
+    override val cellY: Int,
+) : HomeEntry
 
 data class HomeUiState(
     val settings: LauncherSettings = LauncherSettings(),
     val dockApps: List<AppItem> = emptyList(),
-    val placedApps: List<PlacedApp> = emptyList(),
+    val entries: List<HomeEntry> = emptyList(),
     val pageCount: Int = 1,
     val badges: Map<String, Int> = emptyMap(),
 )
@@ -53,17 +71,28 @@ class HomeViewModel @Inject constructor(
     ) { settings, favoriteKeys, apps, homeItems, badges ->
         val byKey = apps.associateBy { it.key }
         val dockApps = favoriteKeys.mapNotNull { byKey[it] }.take(settings.dockColumns)
-        val placedApps = homeItems.mapNotNull { e ->
-            byKey[e.key]?.let { PlacedApp(it, e.page, e.cellX, e.cellY) }
-        }
-        val maxPage = placedApps.maxOfOrNull { it.page } ?: 0
+        // Children grouped by their folder id, kept in stored order.
+        val childrenByFolder = homeItems
+            .filter { it.containerId != HomeItemEntity.HOME }
+            .groupBy { it.containerId }
+        val entries = homeItems
+            .filter { it.containerId == HomeItemEntity.HOME }
+            .mapNotNull { row ->
+                if (row.isFolder) {
+                    val folderApps = childrenByFolder[row.id].orEmpty().mapNotNull { byKey[it.key] }
+                    PlacedFolder(row.id, row.folderName.orEmpty(), folderApps, row.page, row.cellX, row.cellY)
+                } else {
+                    byKey[row.key]?.let { PlacedApp(it, row.page, row.cellX, row.cellY) }
+                }
+            }
+        val maxPage = entries.maxOfOrNull { it.page } ?: 0
         // Only as many pages as actually have icons (min 1). A new trailing page is offered
         // transiently by the workspace while dragging, and becomes permanent once an icon lands.
         val pageCount = (maxPage + 1).coerceAtLeast(1)
         HomeUiState(
             settings = settings,
             dockApps = dockApps,
-            placedApps = placedApps,
+            entries = entries,
             pageCount = pageCount,
             badges = badges,
         )
@@ -113,4 +142,23 @@ class HomeViewModel @Inject constructor(
         settingsRepository.addToDockAt(appItem.key, index)
         homeLayoutRepository.removeFromHome(appItem)
     }
+
+    /** Drop an app onto another home app → make a folder of the two. */
+    fun createFolder(target: AppItem, dropped: AppItem, name: String) = viewModelScope.launch {
+        homeLayoutRepository.createFolder(target, dropped, name)
+    }
+
+    /** Drop an app onto an existing folder → add it to that folder. */
+    fun addToFolder(appItem: AppItem, folderId: Long) = viewModelScope.launch {
+        homeLayoutRepository.addToFolder(appItem, folderId)
+    }
+
+    /** Take an app out of a folder back onto the home screen (dissolves the folder if one is left). */
+    fun removeFromFolder(appItem: AppItem, folderId: Long) = viewModelScope.launch {
+        val columns = settingsRepository.settings.first().homeColumns
+        homeLayoutRepository.removeFromFolder(appItem, folderId, columns)
+    }
+
+    fun renameFolder(folderId: Long, name: String) =
+        viewModelScope.launch { homeLayoutRepository.renameFolder(folderId, name) }
 }

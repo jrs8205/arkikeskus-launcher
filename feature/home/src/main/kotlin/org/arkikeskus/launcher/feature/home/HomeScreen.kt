@@ -1,21 +1,31 @@
 package org.arkikeskus.launcher.feature.home
 
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +71,8 @@ fun HomeScreen(
     val density = LocalDensity.current
     var selectedHomeApp by remember { mutableStateOf<AppItem?>(null) }
     var selectedDockApp by remember { mutableStateOf<AppItem?>(null) }
+    var openFolderId by remember { mutableStateOf<Long?>(null) }
+    val defaultFolderName = stringResource(R.string.folder_default_name)
 
     // Shared drag state spanning the workspace and the dock (Launcher3-style drag layer/controller).
     val dragController = rememberHomeDragController()
@@ -85,7 +97,7 @@ fun HomeScreen(
                 pageCount = uiState.pageCount,
                 columns = settings.homeColumns,
                 rows = viewModel.rows,
-                placedApps = uiState.placedApps,
+                entries = uiState.entries,
                 badges = badges,
                 badgeShowCount = badgeShowCount,
                 showLabels = settings.showHomeLabels,
@@ -99,6 +111,9 @@ fun HomeScreen(
                 onMove = viewModel::moveItem,
                 onMoveToDock = { app, index -> viewModel.moveToDock(app, index) },
                 onDropOnBar = { app, action -> handleBarDrop(context, viewModel, dragController, app, action) },
+                onOpenFolder = { openFolderId = it.id },
+                onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },
+                onAddToFolder = { app, folderId -> viewModel.addToFolder(app, folderId) },
                 onOpenDrawer = onOpenDrawer,
                 onOpenNotifications = { NotificationShade.expand(context) },
                 onOpenSettings = onOpenSettings,
@@ -237,6 +252,89 @@ fun HomeScreen(
                 HomeActionRow(stringResource(R.string.uninstall)) {
                     AppActions.uninstall(context, dockSelected)
                     selectedDockApp = null
+                }
+            }
+        }
+    }
+
+    val openFolder = openFolderId?.let { id ->
+        uiState.entries.filterIsInstance<PlacedFolder>().firstOrNull { it.id == id }
+    }
+    // Close the sheet if the folder dissolved (dropped to one app) while it was open.
+    LaunchedEffect(openFolderId, openFolder == null) {
+        if (openFolderId != null && openFolder == null) openFolderId = null
+    }
+    if (openFolder != null) {
+        FolderSheet(
+            folder = openFolder,
+            badges = badges,
+            badgeShowCount = badgeShowCount,
+            onRename = { viewModel.renameFolder(openFolder.id, it) },
+            onAppClick = { viewModel.launch(it) },
+            onRemoveFromFolder = { viewModel.removeFromFolder(it, openFolder.id) },
+            onDismiss = { openFolderId = null },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun FolderSheet(
+    folder: PlacedFolder,
+    badges: Map<String, Int>,
+    badgeShowCount: Boolean,
+    onRename: (String) -> Unit,
+    onAppClick: (AppItem) -> Unit,
+    onRemoveFromFolder: (AppItem) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp),
+        ) {
+            var name by remember(folder.id) { mutableStateOf(folder.name) }
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it; onRename(it) },
+                singleLine = true,
+                label = { Text(stringResource(R.string.folder_name_label)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.folder_long_press_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(4),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp),
+            ) {
+                items(items = folder.apps, key = { it.key }) { app ->
+                    AppIcon(
+                        appItem = app,
+                        labelColor = MaterialTheme.colorScheme.onSurface,
+                        showLabel = true,
+                        maxLabelLines = 2,
+                        badgeCount = badges[app.badgeKey] ?: 0,
+                        badgeShowCount = badgeShowCount,
+                        modifier = Modifier
+                            .combinedClickable(
+                                onClick = {
+                                    onAppClick(app)
+                                    onDismiss()
+                                },
+                                onLongClick = { onRemoveFromFolder(app) },
+                            )
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                    )
                 }
             }
         }

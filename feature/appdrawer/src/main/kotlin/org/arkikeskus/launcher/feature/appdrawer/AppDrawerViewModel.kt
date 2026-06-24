@@ -15,6 +15,7 @@ import org.arkikeskus.launcher.data.AppRepository
 import org.arkikeskus.launcher.data.HomeLayoutRepository
 import org.arkikeskus.launcher.data.NotificationBadgeRepository
 import org.arkikeskus.launcher.data.SettingsRepository
+import org.arkikeskus.launcher.data.local.HomeItemEntity
 import org.arkikeskus.launcher.model.AppItem
 import javax.inject.Inject
 
@@ -57,7 +58,11 @@ class AppDrawerViewModel @Inject constructor(
             query = q,
             columns = settings.drawerColumns,
             dockKeys = favorites.toSet(),
-            homeKeys = homeItems.map { it.key }.toSet(),
+            // Only apps placed directly on home (not folder rows or apps inside folders).
+            homeKeys = homeItems
+                .filter { it.containerId == HomeItemEntity.HOME && !it.isFolder }
+                .map { it.key }
+                .toSet(),
             showLabels = settings.showDrawerLabels,
             showNotificationDots = settings.showNotificationDots,
             notificationDotCount = settings.notificationDotCount,

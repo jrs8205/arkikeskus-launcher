@@ -4,133 +4,186 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import org.arkikeskus.launcher.data.local.HomeItemDao
 import org.arkikeskus.launcher.data.local.HomeItemEntity
+import org.arkikeskus.launcher.data.local.HomeItemEntity.Companion.HOME
 import org.arkikeskus.launcher.data.local.LauncherDatabase
 import org.arkikeskus.launcher.model.AppItem
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Persists the app shortcuts placed on the (paged, free-cell) home screen (Room). */
+/**
+ * Persists the home layout (Room): app shortcuts and folders placed at free cells, and the apps
+ * inside each folder. Top-level items live in the [HOME] container; a folder's children live in the
+ * container identified by the folder row's id. Each container is an independent cell space guarded by
+ * the unique (containerId, page, cellX, cellY) index, so the swaps/repacks below stay collision-free.
+ */
 @Singleton
 class HomeLayoutRepository @Inject constructor(
     private val db: LauncherDatabase,
     private val dao: HomeItemDao,
 ) {
+    /** All rows (home items, folders, folder children); the ViewModel partitions by container. */
     val homeItems: Flow<List<HomeItemEntity>> = dao.observeAll()
 
     suspend fun addToHome(appItem: AppItem, columns: Int) {
-        if (dao.count(appItem.packageName, appItem.className, appItem.userSerial) > 0) return
-        val (page, cellX, cellY) = firstFreeCell(dao.getAll(), columns)
-        dao.insert(
-            HomeItemEntity(
-                packageName = appItem.packageName,
-                className = appItem.className,
-                userSerial = appItem.userSerial,
-                page = page,
-                cellX = cellX,
-                cellY = cellY,
-            ),
-        )
+        if (dao.count(HOME, appItem.packageName, appItem.className, appItem.userSerial) > 0) return
+        val (page, cellX, cellY) = firstFreeCell(dao.getContainer(HOME), columns)
+        dao.insert(homeApp(appItem, HOME, page, cellX, cellY))
     }
 
-    /**
-     * Moves [appItem] to (page, cellX, cellY). If the target cell is occupied by another shortcut,
-     * the two swap cells. The whole thing runs in one Room transaction (via a temporary off-grid
-     * slot) so the unique (page, cellX, cellY) index is never violated mid-swap and the [homeItems]
-     * flow only emits the final state.
-     *
-     * @return `true` if the move/swap was applied, `false` if [appItem] is no longer on the home
-     *   screen (e.g. removed between the drop and this call) — callers should not apply an optimistic
-     *   placement in that case.
-     */
+    /** Moves/swaps a home item to a target home cell. Returns false if the item is gone. */
     suspend fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int): Boolean =
         db.withTransaction {
-            val source = dao.getByKey(appItem.packageName, appItem.className, appItem.userSerial)
+            val source = dao.getByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
                 ?: return@withTransaction false
             moveOrSwap(source, page, cellX, cellY)
             true
         }
 
-    /**
-     * Places [appItem] at (page, cellX, cellY), used when an icon is dragged onto the home screen
-     * from the dock. If the shortcut already exists on home it moves/swaps like [moveItem]; otherwise
-     * it is inserted at the target cell, or — if that cell is occupied — at the first free cell so
-     * the existing icon is never clobbered. [columns] sizes the free-cell search.
-     */
+    /** Places [appItem] on the home screen at a cell (used for a dock→home drop), swapping/falling back. */
     suspend fun placeAt(appItem: AppItem, page: Int, cellX: Int, cellY: Int, columns: Int): Boolean =
         db.withTransaction {
-            val existing = dao.getByKey(appItem.packageName, appItem.className, appItem.userSerial)
+            val existing = dao.getByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
             if (existing != null) {
                 moveOrSwap(existing, page, cellX, cellY)
                 return@withTransaction true
             }
-            val (p, x, y) = if (dao.getAt(page, cellX, cellY) == null) {
+            val (p, x, y) = if (dao.getAt(HOME, page, cellX, cellY) == null) {
                 Triple(page, cellX, cellY)
             } else {
-                firstFreeCell(dao.getAll(), columns)
+                firstFreeCell(dao.getContainer(HOME), columns)
             }
-            dao.insert(
-                HomeItemEntity(
-                    packageName = appItem.packageName,
-                    className = appItem.className,
-                    userSerial = appItem.userSerial,
-                    page = p,
-                    cellX = x,
-                    cellY = y,
-                ),
-            )
+            dao.insert(homeApp(appItem, HOME, p, x, y))
             true
         }
 
-    /**
-     * Moves [source] to (page, cellX, cellY), swapping with the cell's current occupant if any.
-     * Must be called inside a [db] transaction: the swap parks [source] in an off-grid slot so the
-     * unique (page, cellX, cellY) index holds at every step.
-     */
-    private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int) {
-        if (source.page == page && source.cellX == cellX && source.cellY == cellY) return
-        val occupant = dao.getAt(page, cellX, cellY)
-        when {
-            occupant == null -> dao.moveById(source.id, page, cellX, cellY)
-            occupant.id == source.id -> Unit
-            else -> {
-                dao.moveById(source.id, TEMP_SLOT, TEMP_SLOT, TEMP_SLOT)
-                dao.moveById(occupant.id, source.page, source.cellX, source.cellY)
-                dao.moveById(source.id, page, cellX, cellY)
-            }
-        }
+    suspend fun removeFromHome(appItem: AppItem) {
+        dao.deleteByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
     }
 
     /**
-     * Repacks every shortcut into the first free cells of a [columns]-wide grid, preserving reading
-     * order (page, then row, then column). Call this when the home column count shrinks so shortcuts
-     * stored at a now-out-of-range `cellX` are pulled back on-screen; overflow flows onto later pages.
+     * Repacks the top-level home items (apps and folders) into a [columns]-wide grid, preserving
+     * reading order and spilling overflow onto later pages. Folder *contents* are left untouched.
      */
     suspend fun reflow(columns: Int) {
         if (columns <= 0) return
         db.withTransaction {
-            val items = dao.getAllOrdered()
-            if (items.isEmpty()) return@withTransaction
-            // Rebuild from scratch: clearing first frees every cell, so the sequential repack below
-            // can never collide with a not-yet-moved row under the unique index.
-            dao.clear()
+            val rows = dao.getContainerOrdered(HOME)
+            if (rows.isEmpty()) return@withTransaction
+            // Park everything off-grid first (unique temp cells) so the repack can't collide.
+            rows.forEachIndexed { i, row -> dao.moveById(row.id, HOME, -1, -(i + 1), -1) }
             val slotsPerPage = columns * ROWS
-            items.forEachIndexed { i, item ->
+            rows.forEachIndexed { i, row ->
                 val slot = i % slotsPerPage
-                dao.insert(
-                    item.copy(
-                        id = 0,
-                        page = i / slotsPerPage,
-                        cellX = slot % columns,
-                        cellY = slot / columns,
-                    ),
-                )
+                dao.moveById(row.id, HOME, i / slotsPerPage, slot % columns, slot / columns)
             }
         }
     }
 
-    suspend fun removeFromHome(appItem: AppItem) {
-        dao.deleteByKey(appItem.packageName, appItem.className, appItem.userSerial)
+    // --- Folders ---------------------------------------------------------------------------------
+
+    /**
+     * Creates a folder at [target]'s home cell containing [target] and [dropped] (dropped onto it).
+     * Returns the new folder id, or -1 if either app is no longer on the home screen.
+     */
+    suspend fun createFolder(target: AppItem, dropped: AppItem, name: String): Long =
+        db.withTransaction {
+            val targetRow = dao.getByKey(HOME, target.packageName, target.className, target.userSerial)
+                ?: return@withTransaction -1L
+            val droppedRow = dao.getByKey(HOME, dropped.packageName, dropped.className, dropped.userSerial)
+                ?: return@withTransaction -1L
+            if (targetRow.id == droppedRow.id) return@withTransaction -1L
+            val page = targetRow.page
+            val cellX = targetRow.cellX
+            val cellY = targetRow.cellY
+            // Folder starts off-grid so it doesn't clash with the target cell it's about to take over.
+            val folderId = dao.insert(
+                HomeItemEntity(containerId = HOME, folderName = name, page = -1, cellX = -1, cellY = -1),
+            )
+            dao.moveById(targetRow.id, folderId, 0, 0, 0)
+            dao.moveById(droppedRow.id, folderId, 0, 1, 0)
+            dao.moveById(folderId, HOME, page, cellX, cellY)
+            folderId
+        }
+
+    /** Moves [appItem] off the home screen into [folderId], appended after its current children. */
+    suspend fun addToFolder(appItem: AppItem, folderId: Long) {
+        db.withTransaction {
+            val row = dao.getByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
+                ?: return@withTransaction
+            val order = dao.childCount(folderId)
+            dao.moveById(row.id, folderId, 0, order, 0)
+        }
     }
+
+    /**
+     * Moves [appItem] out of [folderId] back to a free home cell. Re-indexes the remaining children;
+     * if only one is left the folder is dissolved (the last app takes the folder's cell).
+     */
+    suspend fun removeFromFolder(appItem: AppItem, folderId: Long, columns: Int) {
+        db.withTransaction {
+            val row = dao.getByKey(folderId, appItem.packageName, appItem.className, appItem.userSerial)
+                ?: return@withTransaction
+            val (p, x, y) = firstFreeCell(dao.getContainer(HOME), columns)
+            dao.moveById(row.id, HOME, p, x, y)
+            reindexFolder(folderId)
+            dissolveIfNeeded(folderId)
+        }
+    }
+
+    suspend fun renameFolder(folderId: Long, name: String) {
+        dao.renameFolder(folderId, name)
+    }
+
+    private suspend fun reindexFolder(folderId: Long) {
+        val children = dao.getContainerOrdered(folderId)
+        children.forEachIndexed { i, child ->
+            if (child.cellX != i || child.cellY != 0 || child.page != 0) {
+                dao.moveById(child.id, folderId, 0, i, 0)
+            }
+        }
+    }
+
+    /** Collapses a folder once it holds a single app (move it out) or none (delete the folder). */
+    private suspend fun dissolveIfNeeded(folderId: Long) {
+        val children = dao.getContainerOrdered(folderId)
+        when (children.size) {
+            0 -> dao.deleteById(folderId)
+            1 -> {
+                val folder = dao.getById(folderId) ?: return
+                dao.deleteById(folderId) // free the home cell first
+                dao.moveById(children.first().id, HOME, folder.page, folder.cellX, folder.cellY)
+            }
+        }
+    }
+
+    /**
+     * Moves [source] to a target cell in the [HOME] container, swapping with the cell's occupant if
+     * any. Call inside a transaction: the swap parks [source] off-grid so the unique index holds.
+     */
+    private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int) {
+        if (source.page == page && source.cellX == cellX && source.cellY == cellY) return
+        val occupant = dao.getAt(HOME, page, cellX, cellY)
+        when {
+            occupant == null -> dao.moveById(source.id, HOME, page, cellX, cellY)
+            occupant.id == source.id -> Unit
+            else -> {
+                dao.moveById(source.id, HOME, TEMP_SLOT, TEMP_SLOT, TEMP_SLOT)
+                dao.moveById(occupant.id, HOME, source.page, source.cellX, source.cellY)
+                dao.moveById(source.id, HOME, page, cellX, cellY)
+            }
+        }
+    }
+
+    private fun homeApp(app: AppItem, container: Long, page: Int, cellX: Int, cellY: Int) =
+        HomeItemEntity(
+            containerId = container,
+            packageName = app.packageName,
+            className = app.className,
+            userSerial = app.userSerial,
+            page = page,
+            cellX = cellX,
+            cellY = cellY,
+        )
 
     private fun firstFreeCell(items: List<HomeItemEntity>, columns: Int): Triple<Int, Int, Int> {
         val occupied = items.map { Triple(it.page, it.cellX, it.cellY) }.toHashSet()

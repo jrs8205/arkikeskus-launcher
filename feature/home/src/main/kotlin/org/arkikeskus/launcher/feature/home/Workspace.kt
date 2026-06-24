@@ -1,6 +1,7 @@
 package org.arkikeskus.launcher.feature.home
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -69,7 +70,7 @@ fun Workspace(
     pageCount: Int,
     columns: Int,
     rows: Int,
-    placedApps: List<PlacedApp>,
+    entries: List<HomeEntry>,
     badges: Map<String, Int>,
     badgeShowCount: Boolean,
     showLabels: Boolean,
@@ -83,6 +84,9 @@ fun Workspace(
     onMove: suspend (AppItem, Int, Int, Int) -> Boolean,
     onMoveToDock: (AppItem, Int) -> Unit,
     onDropOnBar: (AppItem, DropAction) -> Unit,
+    onOpenFolder: (PlacedFolder) -> Unit,
+    onCreateFolder: (target: AppItem, dropped: AppItem) -> Unit,
+    onAddToFolder: (app: AppItem, folderId: Long) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -106,11 +110,14 @@ fun Workspace(
     // The cell the dragged icon would drop into — shown as a placeholder while dragging.
     var targetCell by remember { mutableStateOf<IntOffset?>(null) }
 
+    val placedApps = remember(entries) { entries.filterIsInstance<PlacedApp>() }
+    val folders = remember(entries) { entries.filterIsInstance<PlacedFolder>() }
+
     // Optimistic placements (key -> page/cellX/cellY) applied on top of [placedApps] until the
     // database flow catches up, so an icon doesn't flash at its old cell for a frame on drop.
     var optimistic by remember { mutableStateOf(emptyMap<String, Triple<Int, Int, Int>>()) }
-    // Keys optimistically removed from home (dragged into the dock) — hidden until the flow drops
-    // them, so the icon doesn't reappear at its old cell for a frame.
+    // Keys optimistically removed from home (dragged into the dock or a folder) — hidden until the
+    // flow drops them, so the icon doesn't reappear at its old cell for a frame.
     var removedKeys by remember { mutableStateOf(emptySet<String>()) }
     LaunchedEffect(placedApps) {
         if (optimistic.isNotEmpty()) {
@@ -132,9 +139,11 @@ fun Workspace(
                 optimistic[p.app.key]?.let { (pg, x, y) -> p.copy(page = pg, cellX = x, cellY = y) } ?: p
             }
     }
-    // The drag gesture's pointerInput block outlives recomposition (its keys don't include the app
+    // Apps + folders together — what's actually on the grid, used for rendering and occupant lookup.
+    val effectiveEntries: List<HomeEntry> = remember(effectiveApps, folders) { effectiveApps + folders }
+    // The drag gesture's pointerInput block outlives recomposition (its keys don't include the entry
     // list), so it must read the *latest* placements through this state, not a stale closure capture.
-    val latestApps by rememberUpdatedState(effectiveApps)
+    val latestEntries by rememberUpdatedState(effectiveEntries)
 
     val cellW = if (columns > 0 && gridSize.width > 0) gridSize.width.toFloat() / columns else 1f
     val cellH = if (rows > 0 && gridSize.height > 0) gridSize.height.toFloat() / rows else 1f
@@ -153,8 +162,8 @@ fun Workspace(
     // never feels like a real second page until an icon is dropped onto it).
     val settledPage = pagerState.settledPage
     LaunchedEffect(settledPage, dragging) {
-        if (dragging == null && settledPage > 0 && effectiveApps.none { it.page == settledPage }) {
-            val lastContent = effectiveApps.maxOfOrNull { it.page } ?: 0
+        if (dragging == null && settledPage > 0 && effectiveEntries.none { it.page == settledPage }) {
+            val lastContent = effectiveEntries.maxOfOrNull { it.page } ?: 0
             if (settledPage > lastContent) pagerState.animateScrollToPage(lastContent)
         }
     }
@@ -267,9 +276,34 @@ fun Workspace(
                             }
                         },
                 ) {
-                    effectiveApps.asSequence()
+                    effectiveEntries.asSequence()
                         .filter { it.page == page }
-                        .forEach { placed ->
+                        .forEach { entry ->
+                            when (entry) {
+                            is PlacedFolder -> {
+                                val folderBadge = entry.apps.sumOf { badges[it.badgeKey] ?: 0 }
+                                Box(
+                                    modifier = Modifier
+                                        .offset {
+                                            val sx = entry.cellX.coerceIn(0, columns - 1)
+                                            val sy = entry.cellY.coerceIn(0, rows - 1)
+                                            IntOffset((sx * cellW).roundToInt(), (sy * cellH).roundToInt())
+                                        }
+                                        .size(with(density) { cellW.toDp() }, with(density) { cellH.toDp() })
+                                        .clickable { onOpenFolder(entry) },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    FolderIcon(
+                                        name = entry.name,
+                                        apps = entry.apps,
+                                        showLabel = showLabels,
+                                        badgeCount = folderBadge,
+                                        badgeShowCount = badgeShowCount,
+                                    )
+                                }
+                            }
+                            is PlacedApp -> {
+                            val placed = entry
                             Box(
                                 modifier = Modifier
                                     .offset {
@@ -427,27 +461,31 @@ fun Workspace(
                                                         val ty = (dragPos.y / cellH).toInt()
                                                             .coerceIn(0, rows - 1)
                                                         val targetPage = pagerState.currentPage
-                                                        // Whoever sits in the target cell swaps back
-                                                        // into the dragged icon's old cell — mirror
-                                                        // that optimistically so neither flickers.
-                                                        val occupant = latestApps.firstOrNull {
-                                                            it.page == targetPage && it.cellX == tx &&
-                                                                it.cellY == ty && it.app.key != d.app.key
+                                                        val occupant = latestEntries.firstOrNull {
+                                                            it.page == targetPage && it.cellX == tx && it.cellY == ty &&
+                                                                !(it is PlacedApp && it.app.key == d.app.key)
                                                         }
-                                                        val source = Triple(d.page, d.cellX, d.cellY)
-                                                        optimistic = optimistic + buildMap {
-                                                            put(d.app.key, Triple(targetPage, tx, ty))
-                                                            occupant?.let { put(it.app.key, source) }
-                                                        }
-                                                        haptics.performHapticFeedback(
-                                                            HapticFeedbackType.LongPress,
-                                                        )
-                                                        scope.launch {
-                                                            if (!onMove(d.app, targetPage, tx, ty)) {
-                                                                // Rejected — roll back.
-                                                                optimistic = optimistic - buildList {
-                                                                    add(d.app.key)
-                                                                    occupant?.let { add(it.app.key) }
+                                                        when (occupant) {
+                                                            // Drop on another app → create a folder.
+                                                            is PlacedApp -> {
+                                                                removedKeys = removedKeys + d.app.key
+                                                                onCreateFolder(occupant.app, d.app)
+                                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            }
+                                                            // Drop on a folder → add the app to it.
+                                                            is PlacedFolder -> {
+                                                                removedKeys = removedKeys + d.app.key
+                                                                onAddToFolder(d.app, occupant.id)
+                                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                            }
+                                                            // Free cell → move (optimistic; roll back if rejected).
+                                                            else -> {
+                                                                optimistic = optimistic + (d.app.key to Triple(targetPage, tx, ty))
+                                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                                scope.launch {
+                                                                    if (!onMove(d.app, targetPage, tx, ty)) {
+                                                                        optimistic = optimistic - d.app.key
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -469,6 +507,8 @@ fun Workspace(
                                     badgeCount = badges[placed.app.badgeKey] ?: 0,
                                     badgeShowCount = badgeShowCount,
                                 )
+                            }
+                            }
                             }
                         }
                 }
