@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.ui.component
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,6 +19,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.model.IconRequest
+
+/**
+ * Whether [AppIcon]s under this subtree render as Material You themed (monochrome) icons. Provided per
+ * surface (home, dock, drawer) from the user's setting; default off. [AppIcon] feeds it (plus the
+ * current dark/light theme) into the Coil request, so the cache keys per variant and toggling the
+ * setting refreshes icons immediately.
+ */
+val LocalThemedIcons = compositionLocalOf { false }
 
 /**
  * An app icon plus optional label. The icon is loaded via Coil (see AppIconFetcher), so it is
@@ -42,7 +53,7 @@ fun AppIcon(
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
             AsyncImage(
-                model = appItem,
+                model = IconRequest(appItem, themed = LocalThemedIcons.current, dark = isSystemInDarkTheme()),
                 contentDescription = appItem.label,
                 modifier = Modifier.size(iconSize),
             )

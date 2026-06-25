@@ -46,6 +46,15 @@ class HomeDragController {
     var removeBounds by mutableStateOf(Rect.Zero)
     var localDragging by mutableStateOf(false)
 
+    /**
+     * True while a non-AppItem local home entry — a folder or a pinned shortcut — owns a long-press
+     * gesture (from pickup until release). The root-level home swipe detector checks this so it never
+     * steals the first movement after such a long-press. [localDragging] is not enough on its own: it
+     * is only set once a *removable* local drag actually starts moving, so it misses folders entirely
+     * and the lifted-but-not-yet-moving window of a shortcut.
+     */
+    var localGestureActive by mutableStateOf(false)
+
     // Home-grid metrics for cell math on a dock→home / drawer→home drop (published by Workspace).
     var columns by mutableStateOf(1)
     var rows by mutableStateOf(1)

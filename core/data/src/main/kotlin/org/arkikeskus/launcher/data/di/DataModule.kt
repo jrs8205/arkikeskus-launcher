@@ -45,7 +45,11 @@ object DataModule {
     @Singleton
     fun provideLauncherDatabase(@ApplicationContext context: Context): LauncherDatabase =
         Room.databaseBuilder(context, LauncherDatabase::class.java, "launcher.db")
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // The schema is exported (core/data/schemas); a future version bump must add a real
+            // Migration here via .addMigrations(...). Destructive fallback is allowed ONLY from the
+            // pre-v5 dev versions (1–4, which never shipped a migration) so an old test install resets
+            // instead of crashing; v5 onward is migrated, so the user's home layout survives upgrades.
+            .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1, 2, 3, 4)
             .build()
 
     @Provides

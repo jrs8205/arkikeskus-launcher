@@ -27,4 +27,6 @@
     <string name="settings_new_drawer_folder_desc">Luo tyhjä kansio, johon voit siirtää sovelluksia</string>
     <string name="settings_drawer_folder_created">Kansio luotu sovellusvalikkoon</string>
     <string name="drawer_folder_default">Kansio</string>
+    <string name="settings_icons">Kuvakkeet</string>
+    <string name="settings_themed_icons">Teemakuvakkeet (Material You)</string>
 </resources>

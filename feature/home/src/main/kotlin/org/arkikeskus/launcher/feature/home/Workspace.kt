@@ -38,7 +38,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -58,7 +57,6 @@ import org.arkikeskus.launcher.ui.DragSource
 import org.arkikeskus.launcher.ui.HomeDragController
 import org.arkikeskus.launcher.ui.component.AppIcon
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -69,8 +67,9 @@ import kotlin.math.roundToInt
  *   consumes the pointer immediately, so neither the pager nor the page swipes can steal it. Drop
  *   on a cell to move it (a second tick); drop without moving opens [onAppMenu]; drag to the screen
  *   edge flips the page.
- * - **Page background** (parent node, only reached when no icon is under the finger): a vertical
- *   swipe opens the drawer / notifications; a still long-press opens settings.
+ * - **Page background** (parent node, only reached when no icon is under the finger): a still
+ *   long-press opens settings. (The drawer/notifications swipe-up was hoisted to HomeScreen's root —
+ *   see Modifier.pixelHomeSwipe — so it wins over icons and the dock too.)
  * - **Pager**: horizontal swipes change pages (disabled while an icon is being dragged).
  *
  * [homeSignals] (HOME pressed / home gesture) always scrolls back to the first page.
@@ -86,8 +85,6 @@ fun Workspace(
     badgeScale: Float,
     showLabels: Boolean,
     showPageIndicator: Boolean,
-    swipeUpForDrawer: Boolean,
-    swipeDownForNotifications: Boolean,
     homeSignals: Flow<Unit>,
     dragController: HomeDragController,
     onAppClick: (AppItem) -> Unit,
@@ -101,10 +98,6 @@ fun Workspace(
     onRemoveShortcut: (Long) -> Unit,
     onCreateFolder: (target: AppItem, dropped: AppItem) -> Unit,
     onAddToFolder: (app: AppItem, folderId: Long) -> Unit,
-    onDrawerDrag: (Float) -> Unit,
-    onDrawerSettle: (Float) -> Unit,
-    onOpenDrawer: () -> Unit,
-    onOpenNotifications: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -232,52 +225,61 @@ fun Workspace(
             // PICK UP
             draggingLocal = entry
             localMoving = false
+            // Claim the gesture for this local entry so the root swipe-up detector (which runs in the
+            // Initial pass, before us) won't steal the first movement after this long-press.
+            dragController.localGestureActive = true
             localDragPos = Offset(entry.cellX * cellW + down.position.x, entry.cellY * cellH + down.position.y)
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            val completed = drag(down.id) { change ->
-                val delta = change.positionChange()
-                change.consume()
-                localDragPos += delta
-                if (!localMoving) {
-                    localMoving = true
-                    if (removable) dragController.localDragging = true
-                }
-                // Publish root coords so the remove zone can highlight + hit-test this local drag.
-                if (removable) dragController.update(dragController.gridBounds.topLeft + localDragPos)
-                if (!pagerState.isScrollInProgress) {
-                    if (localDragPos.x > gridSize.width - edgePx && pagerState.currentPage < pageCount) {
-                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                    } else if (localDragPos.x < edgePx && pagerState.currentPage > 0) {
-                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+            try {
+                val completed = drag(down.id) { change ->
+                    val delta = change.positionChange()
+                    change.consume()
+                    localDragPos += delta
+                    if (!localMoving) {
+                        localMoving = true
+                        if (removable) dragController.localDragging = true
                     }
+                    // Publish root coords so the remove zone can highlight + hit-test this local drag.
+                    if (removable) dragController.update(dragController.gridBounds.topLeft + localDragPos)
+                    if (!pagerState.isScrollInProgress) {
+                        if (localDragPos.x > gridSize.width - edgePx && pagerState.currentPage < pageCount) {
+                            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                        } else if (localDragPos.x < edgePx && pagerState.currentPage > 0) {
+                            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                        }
+                    }
+                    val cx = (localDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
+                    val cy = (localDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
+                    val nc = IntOffset(cx, cy)
+                    if (nc != targetCell) targetCell = nc
                 }
-                val cx = (localDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
-                val cy = (localDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
-                val nc = IntOffset(cx, cy)
-                if (nc != targetCell) targetCell = nc
-            }
-            targetCell = null
-            val rootPos = dragController.gridBounds.topLeft + localDragPos
-            if (completed && localMoving && removable && dragController.isOverRemove(rootPos)) {
-                onRemove()
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-            } else if (completed && localMoving) {
-                val tx = (localDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
-                val ty = (localDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
-                val targetPage = pagerState.currentPage
-                if (targetPage != entry.page || tx != entry.cellX || ty != entry.cellY) {
-                    localOptimistic = rowId to Triple(targetPage, tx, ty)
+                targetCell = null
+                val rootPos = dragController.gridBounds.topLeft + localDragPos
+                if (completed && localMoving && removable && dragController.isOverRemove(rootPos)) {
+                    onRemove()
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    scope.launch {
-                        if (!onMoveFolder(rowId, targetPage, tx, ty)) localOptimistic = null
+                } else if (completed && localMoving) {
+                    val tx = (localDragPos.x / cellW).toInt().coerceIn(0, columns - 1)
+                    val ty = (localDragPos.y / cellH).toInt().coerceIn(0, rows - 1)
+                    val targetPage = pagerState.currentPage
+                    if (targetPage != entry.page || tx != entry.cellX || ty != entry.cellY) {
+                        localOptimistic = rowId to Triple(targetPage, tx, ty)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        scope.launch {
+                            if (!onMoveFolder(rowId, targetPage, tx, ty)) localOptimistic = null
+                        }
                     }
+                } else if (completed) {
+                    onStillPress()
                 }
-            } else if (completed) {
-                onStillPress()
+            } finally {
+                // Reset even on cancellation (node disposed / pointerInput restarted), so a stuck flag
+                // can never leave the root swipe detector permanently disabled.
+                dragController.localDragging = false
+                dragController.localGestureActive = false
+                draggingLocal = null
+                localMoving = false
             }
-            dragController.localDragging = false
-            draggingLocal = null
-            localMoving = false
         }
     }
 
@@ -358,58 +360,12 @@ fun Workspace(
                                 )
                             }
                         }
-                        // Page background — only reached when no icon is under the finger. Swipe up
-                        // drives the drawer (finger-following, via onDrawerDrag/Settle); swipe down
-                        // opens notifications (one-shot).
-                        .pointerInput(swipeUpForDrawer, swipeDownForNotifications) {
-                            // Custom vertical-swipe detector (adapted from AOSP Launcher3's
-                            // SingleAxisSwipeDetector.shouldScrollStart): a swipe counts as vertical
-                            // only when |dy| clears the touch slop AND dominates |dx|. We consume the
-                            // gesture only once that's decided, so the HorizontalPager still gets real
-                            // sideways swipes but a flick up reliably "catches" and drives the drawer.
-                            val touchSlop = viewConfiguration.touchSlop
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val velocityTracker = VelocityTracker()
-                                velocityTracker.addPosition(down.uptimeMillis, down.position)
-                                var mode = 0 // 0 undecided, 1 drawer (up-drag)
-                                var lastY = down.position.y
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (!change.pressed) {
-                                        if (mode == 1) onDrawerSettle(velocityTracker.calculateVelocity().y)
-                                        break
-                                    }
-                                    if (change.isConsumed && mode != 1) break // a child (icon) took over
-                                    velocityTracker.addPosition(change.uptimeMillis, change.position)
-                                    val dx = change.position.x - down.position.x
-                                    val dy = change.position.y - down.position.y
-                                    if (mode == 0) {
-                                        if (abs(dy) > touchSlop && abs(dy) > abs(dx)) {
-                                            if (dy < 0 && swipeUpForDrawer) {
-                                                mode = 1
-                                                change.consume()
-                                                onDrawerDrag(dy) // jump to follow the finger (incl. slop)
-                                                lastY = change.position.y
-                                            } else if (dy > 0 && swipeDownForNotifications) {
-                                                change.consume()
-                                                onOpenNotifications()
-                                                break // one-shot
-                                            } else {
-                                                break // wrong direction or disabled
-                                            }
-                                        } else if (abs(dx) > touchSlop && abs(dx) >= abs(dy)) {
-                                            break // horizontal → leave it to the pager
-                                        }
-                                    } else if (mode == 1) {
-                                        change.consume()
-                                        onDrawerDrag(change.position.y - lastY)
-                                        lastY = change.position.y
-                                    }
-                                }
-                            }
-                        }
+                        // NOTE: the drawer/notifications swipe-up detector used to live here, on the
+                        // page background, so it only caught swipes from empty space. It was hoisted to
+                        // HomeScreen's root Box (see Modifier.pixelHomeSwipe) and runs in the Initial
+                        // pointer pass, so a flick now wins the gesture even over icons, folders,
+                        // shortcuts and the dock — matching Pixel Launcher. Only the still-long-press
+                        // settings detector remains a page-background gesture.
                         .pointerInput(Unit) {
                             // Still long-press on empty space opens settings. Times out a touch
                             // later than the icon long-press, so an icon pickup (which consumes the

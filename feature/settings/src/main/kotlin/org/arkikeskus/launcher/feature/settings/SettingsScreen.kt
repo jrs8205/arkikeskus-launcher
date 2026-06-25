@@ -180,6 +180,16 @@ fun SettingsScreen(
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showHomeLabels, viewModel::setShowHomeLabels)
                 SwitchRow(stringResource(R.string.settings_page_indicator), s.showPageIndicator, viewModel::setShowPageIndicator)
 
+                // Themed (monochrome) icons need the adaptive-icon monochrome API (Android 13+).
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    SectionTitle(stringResource(R.string.settings_icons))
+                    SwitchRow(
+                        stringResource(R.string.settings_themed_icons),
+                        s.useThemedIcons,
+                        viewModel::setUseThemedIcons,
+                    )
+                }
+
                 SectionTitle(stringResource(R.string.settings_notifications))
                 SwitchRow(stringResource(R.string.settings_notif_dots), s.showNotificationDots, viewModel::setShowNotificationDots)
                 SwitchRow(stringResource(R.string.settings_notif_count), s.notificationDotCount, viewModel::setNotificationDotCount)

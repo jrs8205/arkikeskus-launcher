@@ -29,6 +29,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.feature.appdrawer.AppDrawerScreen
@@ -63,7 +64,13 @@ fun LauncherShell(
     // The shared drag state. Created here so both the home screen and the app drawer feed the same
     // controller and the floating icon below can travel between them.
     val dragController = rememberHomeDragController()
-    val drawerOpen by remember { derivedStateOf { progress.value > 0.001f } }
+    var isDraggingDrawer by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableStateOf(0f) }
+    val currentProgress by remember {
+        derivedStateOf { if (isDraggingDrawer) dragProgress else progress.value }
+    }
+
+    val drawerOpen by remember { derivedStateOf { currentProgress > 0.001f } }
     // While an app is being dragged out of the drawer, keep the drawer composed even after it has
     // slid shut — otherwise removing it from composition would cancel the in-progress drag gesture.
     // Keyed on [moving] (not [isDragging]): a still long-press only lifts (menu), and must NOT fade
@@ -79,25 +86,50 @@ fun LauncherShell(
         else dragOutAlpha.snapTo(1f)
     }
 
+    // The single in-flight drawer-progress coroutine (a drag snapTo or a settle animateTo). Each new
+    // drag/settle cancels the previous one, so a fast finger flick can't pile up competing snapTo/
+    // animateTo jobs that make the drawer lag behind the finger.
+    var dragJob by remember { mutableStateOf<Job?>(null) }
+
     fun animateProgress(target: Float) {
-        scope.launch { progress.animateTo(target, settleSpring) }
+        isDraggingDrawer = false
+        android.util.Log.d("AntigravitySwipe", "animateProgress target=$target")
+        dragJob?.cancel()
+        dragJob = scope.launch { progress.animateTo(target, settleSpring) }
     }
 
     fun dragDrawer(dyPx: Float) {
+        if (!isDraggingDrawer) {
+            isDraggingDrawer = true
+            dragProgress = progress.value
+            android.util.Log.d("AntigravitySwipe", "dragDrawer START: progress.value=${progress.value}")
+        }
         // Swipe up (negative dy) increases progress; clamp to [0, 1].
-        scope.launch { progress.snapTo((progress.value - dyPx / shellHeightPx).coerceIn(0f, 1f)) }
+        val target = (dragProgress - dyPx / shellHeightPx).coerceIn(0f, 1f)
+        android.util.Log.d("AntigravitySwipe", "dragDrawer: dyPx=$dyPx, shellHeight=$shellHeightPx, oldProgress=$dragProgress, target=$target")
+        dragProgress = target
+        dragJob?.cancel()
+        dragJob = scope.launch { progress.snapTo(target) }
     }
 
     fun settleDrawer(velocityPxPerSec: Float) {
+        val currentVal = if (isDraggingDrawer) dragProgress else progress.value
+        isDraggingDrawer = false
+        android.util.Log.d("AntigravitySwipe", "settleDrawer START: currentVal=$currentVal, velocity=$velocityPxPerSec")
         // Launcher3-style: a fling (release speed past the threshold) snaps to the direction of the
         // fling regardless of distance; otherwise settle by how far it was dragged. Velocity is px/s.
         val flingThreshold = 600f
         val target = when {
             velocityPxPerSec < -flingThreshold -> 1f // fast up → open
             velocityPxPerSec > flingThreshold -> 0f  // fast down → close
-            else -> if (progress.value > 0.4f) 1f else 0f
+            else -> if (currentVal > 0.4f) 1f else 0f
         }
-        animateProgress(target)
+        android.util.Log.d("AntigravitySwipe", "settleDrawer target decided: $target")
+        dragJob?.cancel()
+        dragJob = scope.launch {
+            progress.snapTo(currentVal)
+            progress.animateTo(target, settleSpring)
+        }
     }
 
     LaunchedEffect(homeSignals) {
@@ -120,32 +152,38 @@ fun LauncherShell(
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (drawerMounted) {
-            AppDrawerScreen(
-                onClose = { animateProgress(0f) },
-                onDrawerDrag = { dragDrawer(it) },
-                onDrawerSettle = { settleDrawer(it) },
-                onOpenSettings = {
-                    animateProgress(0f)
-                    onOpenSettings()
+        // Always compose AppDrawerScreen at fillMaxSize to keep it pre-composed, pre-measured, and pre-laid out.
+        // When closed, it is translated completely off-screen (translationY = size.height).
+        // Compose's pointer input system respects the graphicsLayer transform, so it will not block pointer events for the HomeScreen.
+        AppDrawerScreen(
+            onClose = { animateProgress(0f) },
+            onDrawerDrag = { dragDrawer(it) },
+            onDrawerSettle = { settleDrawer(it) },
+            onOpenSettings = {
+                animateProgress(0f)
+                onOpenSettings()
+            },
+            dragController = dragController,
+            homeSignals = homeSignals,
+            // First movement of a drag-out reveals home/dock to drop onto. The drawer is hidden
+            // with alpha rather than translated, so its (still-mounted) gesture keeps reporting
+            // accurate local coordinates; progress is snapped shut so it's closed after the drop.
+            onDragOutStart = {
+                isDraggingDrawer = false
+                scope.launch { progress.snapTo(0f) }
+            },
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    if (draggingFromDrawer) {
+                        alpha = dragOutAlpha.value
+                    } else {
+                        val ty = (1f - currentProgress) * size.height
+                        android.util.Log.d("AntigravitySwipe", "graphicsLayer: currentProgress=$currentProgress, size.height=${size.height}, translationY=$ty")
+                        translationY = ty
+                    }
                 },
-                dragController = dragController,
-                homeSignals = homeSignals,
-                // First movement of a drag-out reveals home/dock to drop onto. The drawer is hidden
-                // with alpha rather than translated, so its (still-mounted) gesture keeps reporting
-                // accurate local coordinates; progress is snapped shut so it's closed after the drop.
-                onDragOutStart = { scope.launch { progress.snapTo(0f) } },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        if (draggingFromDrawer) {
-                            alpha = dragOutAlpha.value
-                        } else {
-                            translationY = (1f - progress.value) * size.height
-                        }
-                    },
-            )
-        }
+        )
 
         // Single floating icon for any in-progress drag (home, dock or drawer), drawn above every
         // surface so it can travel between them. Positioned by the finger's root coords.

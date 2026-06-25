@@ -23,6 +23,10 @@ local.properties
 
 # AOSP Launcher3 reference (local only, do not commit)
 Launcher3-*.tar.gz
+launcher3_src/
+
+# Local agent/tooling scratch (not part of the app)
+.agents/
 
 # Lawnchair reference (GPL — local only, do NOT commit/redistribute)
 lawnchair-*.zip

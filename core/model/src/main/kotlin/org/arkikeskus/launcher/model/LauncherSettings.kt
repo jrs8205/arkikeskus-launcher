@@ -19,4 +19,6 @@ data class LauncherSettings(
     val notificationDotCount: Boolean = true,
     /** Size multiplier for the notification dot/badge (1.0 = default). */
     val notificationDotScale: Float = 1.0f,
+    /** Render app icons as Material You themed (monochrome) icons where the app provides one. */
+    val useThemedIcons: Boolean = false,
 )

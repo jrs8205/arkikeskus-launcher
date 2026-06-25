@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -81,6 +82,7 @@ import org.arkikeskus.launcher.ui.HomeDragController
 import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.RenameDialog
 import org.arkikeskus.launcher.ui.component.AppIcon
+import org.arkikeskus.launcher.ui.component.LocalThemedIcons
 import org.arkikeskus.launcher.ui.rememberHomeDragController
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -110,6 +112,8 @@ fun AppDrawerScreen(
 
     val badges = if (uiState.showNotificationDots) uiState.badges else emptyMap()
 
+    // All app icons in the drawer (grid, folder sheet, popup) honour the themed-icons setting.
+    CompositionLocalProvider(LocalThemedIcons provides uiState.useThemedIcons) {
     AppDrawerContent(
         apps = uiState.apps,
         folders = uiState.folders,
@@ -216,6 +220,7 @@ fun AppDrawerScreen(
             onDismiss = { openFolderId = null },
         )
     }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -271,6 +276,18 @@ private fun AppDrawerContent(
                 if (pulling) {
                     pulling = false
                     onDrawerSettle(available.y)
+                    return available
+                }
+                return Velocity.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // Safety net: a pull-to-close that ends without a fling (e.g. a slow drag, finger
+                // lifted) would otherwise never reach onPreFling, leaving `pulling` stuck true and the
+                // drawer half-open. Reset here and settle on whatever velocity remains.
+                if (pulling) {
+                    pulling = false
+                    onDrawerSettle(consumed.y + available.y)
                     return available
                 }
                 return Velocity.Zero

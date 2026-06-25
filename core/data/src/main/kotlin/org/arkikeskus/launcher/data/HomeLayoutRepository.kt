@@ -28,9 +28,15 @@ class HomeLayoutRepository @Inject constructor(
     val homeItems: Flow<List<HomeItemEntity>> = dao.observeAll()
 
     suspend fun addToHome(appItem: AppItem, columns: Int) {
-        if (dao.count(HOME, appItem.packageName, appItem.className, appItem.userSerial) > 0) return
-        val (page, cellX, cellY) = firstFreeCell(dao.getContainer(HOME), columns)
-        dao.insert(homeApp(appItem, HOME, page, cellX, cellY))
+        // Atomic count-then-insert: without a transaction a fast double call could read "absent" twice
+        // and place the same app into two different cells.
+        db.withTransaction {
+            if (dao.count(HOME, appItem.packageName, appItem.className, appItem.userSerial) > 0) {
+                return@withTransaction
+            }
+            val (page, cellX, cellY) = firstFreeCell(dao.getContainer(HOME), columns)
+            dao.insert(homeApp(appItem, HOME, page, cellX, cellY))
+        }
     }
 
     /** Moves/swaps a home item to a target home cell. Returns false if the item is gone. */
@@ -231,11 +237,15 @@ class HomeLayoutRepository @Inject constructor(
         )
 
     private fun firstFreeCell(items: List<HomeItemEntity>, columns: Int): Triple<Int, Int, Int> {
+        // Guard against columns <= 0: the inner loop would never run and `page` would increment
+        // forever. SettingsRepository already clamps the value; this is defense in depth so no caller
+        // can hang the layout math.
+        val cols = columns.coerceAtLeast(1)
         val occupied = items.map { Triple(it.page, it.cellX, it.cellY) }.toHashSet()
         var page = 0
         while (true) {
             for (y in 0 until ROWS) {
-                for (x in 0 until columns) {
+                for (x in 0 until cols) {
                     if (Triple(page, x, y) !in occupied) return Triple(page, x, y)
                 }
             }

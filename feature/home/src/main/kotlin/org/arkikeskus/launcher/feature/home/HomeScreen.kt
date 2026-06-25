@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -33,11 +35,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +49,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -77,6 +84,8 @@ import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.RenameDialog
 import org.arkikeskus.launcher.ui.rememberHomeDragController
 import org.arkikeskus.launcher.ui.component.AppIcon
+import org.arkikeskus.launcher.ui.component.LocalThemedIcons
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -121,7 +130,22 @@ fun HomeScreen(
     val badgeShowCount = settings.notificationDotCount
     val badgeScale = settings.notificationDotScale
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // All app icons on home (workspace, dock, folders) honour the themed-icons setting.
+    CompositionLocalProvider(LocalThemedIcons provides settings.useThemedIcons) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            // Root-level, Initial-pass swipe detector: a flick up/down anywhere on home (over icons,
+            // folders, shortcuts or the dock — not just empty space) drives the drawer/notifications.
+            .pixelHomeSwipe(
+                swipeUpForDrawer = settings.swipeUpForDrawer,
+                swipeDownForNotifications = settings.swipeDownForNotifications,
+                dragController = dragController,
+                onDrawerDrag = onDrawerDrag,
+                onDrawerSettle = onDrawerSettle,
+                onOpenNotifications = { NotificationShade.expand(context) },
+            ),
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Workspace(
                 pageCount = uiState.pageCount,
@@ -133,8 +157,6 @@ fun HomeScreen(
                 badgeScale = badgeScale,
                 showLabels = settings.showHomeLabels,
                 showPageIndicator = settings.showPageIndicator,
-                swipeUpForDrawer = settings.swipeUpForDrawer,
-                swipeDownForNotifications = settings.swipeDownForNotifications,
                 homeSignals = homeSignals,
                 dragController = dragController,
                 onAppClick = viewModel::launch,
@@ -148,10 +170,6 @@ fun HomeScreen(
                 onRemoveShortcut = { viewModel.removeShortcut(it) },
                 onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },
                 onAddToFolder = { app, folderId -> viewModel.addToFolder(app, folderId) },
-                onDrawerDrag = onDrawerDrag,
-                onDrawerSettle = onDrawerSettle,
-                onOpenDrawer = onOpenDrawer,
-                onOpenNotifications = { NotificationShade.expand(context) },
                 onOpenSettings = onOpenSettings,
                 modifier = Modifier
                     .weight(1f)
@@ -266,6 +284,7 @@ fun HomeScreen(
             onDismiss = { openFolderId = null },
         )
     }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -328,6 +347,116 @@ private fun FolderSheet(
                             )
                             .padding(vertical = 10.dp, horizontal = 4.dp),
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Root-level home swipe-up/down detector — the Pixel-style fix for "the drawer swipe only catches on
+ * empty space". Applied to HomeScreen's root Box and run in [PointerEventPass.Initial] (parent before
+ * children), so it sees movement *before* the icons, folders, shortcuts, dock and the HorizontalPager.
+ *
+ * It does NOT consume the DOWN and only consumes once the gesture is clearly vertical past the touch
+ * slop — so taps, long-presses and horizontal page swipes pass through untouched, while a flick up
+ * from anywhere on the home surface reliably "catches" and drives the drawer (the root cause of the
+ * old bug: the detector lived on the page background, so icons/dock won the gesture first).
+ *
+ * - Swipe up (with [swipeUpForDrawer]) → finger-following drawer via [onDrawerDrag] / [onDrawerSettle].
+ * - Swipe down (with [swipeDownForNotifications]) → [onOpenNotifications] (one-shot).
+ * - A real long-press drag — an app/dock item ([HomeDragController.isDragging]) or a folder/shortcut
+ *   ([HomeDragController.localGestureActive] / [HomeDragController.localDragging]) — is never stolen;
+ *   the detector bails out so the drag owns the gesture.
+ *
+ * The velocity tracker is fed the UP position *before* `calculateVelocity()` so a fast flick reports
+ * its true release speed (the old detector computed velocity without the final sample, which made fast
+ * flicks under-settle and snap shut).
+ */
+@Composable
+private fun Modifier.pixelHomeSwipe(
+    swipeUpForDrawer: Boolean,
+    swipeDownForNotifications: Boolean,
+    dragController: HomeDragController,
+    onDrawerDrag: (Float) -> Unit,
+    onDrawerSettle: (Float) -> Unit,
+    onOpenNotifications: () -> Unit,
+): Modifier {
+    val latestOnDrawerDrag by rememberUpdatedState(onDrawerDrag)
+    val latestOnDrawerSettle by rememberUpdatedState(onDrawerSettle)
+    val latestOnOpenNotifications by rememberUpdatedState(onOpenNotifications)
+
+    return pointerInput(swipeUpForDrawer, swipeDownForNotifications, dragController) {
+        val touchSlop = viewConfiguration.touchSlop
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            android.util.Log.d("AntigravitySwipe", "Down event detected at ${down.position}")
+            val velocityTracker = VelocityTracker()
+            velocityTracker.addPosition(down.uptimeMillis, down.position)
+            var mode = 0 // 0 = undecided, 1 = driving the drawer (up-drag)
+            var lastY = down.position.y
+
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                velocityTracker.addPosition(change.uptimeMillis, change.position)
+
+                // Never steal a real long-press drag (an app/dock item, or a folder/shortcut).
+                if (dragController.isDragging ||
+                    dragController.localGestureActive ||
+                    dragController.localDragging
+                ) {
+                    android.util.Log.d("AntigravitySwipe", "Bailing out: drag active in controller")
+                    break
+                }
+
+                if (!change.pressed) {
+                    if (mode == 1) {
+                        val finalDy = change.position.y - lastY
+                        android.util.Log.d("AntigravitySwipe", "UP event: mode=1, finalDy=$finalDy")
+                        if (finalDy != 0f) latestOnDrawerDrag(finalDy)
+                        latestOnDrawerSettle(velocityTracker.calculateVelocity().y)
+                    } else {
+                        android.util.Log.d("AntigravitySwipe", "UP event: mode=0 (not in drawer mode)")
+                    }
+                    break
+                }
+
+                val dx = change.position.x - down.position.x
+                val dy = change.position.y - down.position.y
+
+                if (mode == 0) {
+                    when {
+                        abs(dy) > touchSlop && abs(dy) > abs(dx) -> when {
+                            dy < 0f && swipeUpForDrawer -> {
+                                android.util.Log.d("AntigravitySwipe", "Engaging drawer swipe UP! dy=$dy, slop=$touchSlop")
+                                mode = 1
+                                change.consume()
+                                latestOnDrawerDrag(dy) // jump to the finger, including the slop moved
+                                lastY = change.position.y
+                            }
+                            dy > 0f && swipeDownForNotifications -> {
+                                android.util.Log.d("AntigravitySwipe", "Engaging notifications swipe DOWN! dy=$dy, slop=$touchSlop")
+                                change.consume()
+                                latestOnOpenNotifications()
+                                break // one-shot
+                            }
+                            else -> {
+                                android.util.Log.d("AntigravitySwipe", "Gesture direction wrong or disabled: dy=$dy")
+                                break
+                            }
+                        }
+                        // Horizontal gesture → don't consume; leave it to the HorizontalPager.
+                        abs(dx) > touchSlop && abs(dx) >= abs(dy) -> {
+                            android.util.Log.d("AntigravitySwipe", "Horizontal swipe: dx=$dx, dy=$dy. Handing to pager.")
+                            break
+                        }
+                    }
+                } else {
+                    android.util.Log.d("AntigravitySwipe", "Drawer drag active, dy=${change.position.y - lastY}")
+                    change.consume()
+                    latestOnDrawerDrag(change.position.y - lastY)
+                    lastY = change.position.y
                 }
             }
         }
