@@ -14,17 +14,21 @@ class SearchAggregatorTest {
         private val enabled: Boolean,
         private val results: List<SearchResult> = emptyList(),
         private val throws: Boolean = false,
+        var callCount: Int = 0,
     ) : SearchProvider {
         override suspend fun isEnabled() = enabled
         override suspend fun query(query: String): List<SearchResult> {
+            callCount++
             if (throws) error("boom")
             return results
         }
     }
 
     @Test fun `blank query returns empty results without running providers`() = runTest {
-        val agg = SearchAggregator(setOf(FakeProvider(true, throws = true)))
+        val provider = FakeProvider(true, throws = true)
+        val agg = SearchAggregator(setOf(provider))
         assertThat(agg.search("   ")).isEqualTo(SearchResults())
+        assertThat(provider.callCount).isEqualTo(0)
     }
 
     @Test fun `groups results by type`() = runTest {
