@@ -29,4 +29,6 @@
     <string name="drawer_folder_default">Folder</string>
     <string name="settings_icons">Icons</string>
     <string name="settings_themed_icons">Themed icons (Material You)</string>
+    <string name="settings_search">Search</string>
+    <string name="settings_search_contacts">Search contacts</string>
 </resources>

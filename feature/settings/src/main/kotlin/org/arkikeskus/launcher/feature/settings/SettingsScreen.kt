@@ -2,9 +2,13 @@ package org.arkikeskus.launcher.feature.settings
 
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -172,6 +176,12 @@ fun SettingsScreen(
                 ) {
                     openNotificationAccess(context)
                 }
+
+                ExpressiveSectionTitle(stringResource(R.string.settings_search))
+                ContactsSearchToggle(
+                    enabled = s.searchContacts,
+                    onSetEnabled = viewModel::setSearchContacts,
+                )
             }
         }
     }
@@ -193,6 +203,23 @@ private fun openNotificationAccess(context: android.content.Context) {
                 Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
+        }
+    }
+}
+
+@Composable
+private fun ContactsSearchToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        onSetEnabled(granted) // grant → on; deny → stays off
+    }
+    SwitchRow(stringResource(R.string.settings_search_contacts), enabled) { wantOn ->
+        if (!wantOn) {
+            onSetEnabled(false)
+        } else {
+            val has = ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (has) onSetEnabled(true) else launcher.launch(android.Manifest.permission.READ_CONTACTS)
         }
     }
 }

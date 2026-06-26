@@ -65,6 +65,7 @@ class SettingsViewModel @Inject constructor(
     fun setNotificationDotCount(value: Boolean) = update { repository.setNotificationDotCount(value) }
     fun setNotificationDotScale(value: Float) = update { repository.setNotificationDotScale(value) }
     fun setUseThemedIcons(value: Boolean) = update { repository.setUseThemedIcons(value) }
+    fun setSearchContacts(value: Boolean) = update { repository.setSearchContacts(value) }
 
     private fun update(block: suspend () -> Unit) {
         viewModelScope.launch { block() }
