@@ -100,7 +100,7 @@ fun Workspace(
     onRemoveShortcut: (Long) -> Unit,
     onCreateFolder: (target: AppItem, dropped: AppItem) -> Unit,
     onAddToFolder: (app: AppItem, folderId: Long) -> Unit,
-    onOpenSettings: () -> Unit,
+    onEmptyAreaMenu: (IntOffset, Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val haptics = LocalHapticFeedback.current
@@ -396,7 +396,13 @@ fun Workspace(
                                 // (dragging != null) the hold belonged to that icon, not settings.
                                 if (held == null && !resolved && dragging == null) {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    onOpenSettings()
+                                    // Anchor the options popup at the press point (root coords); flip it
+                                    // above when the press is in the lower half of the screen.
+                                    val anchorPt = dragController.gridBounds.topLeft + down.position
+                                    onEmptyAreaMenu(
+                                        IntOffset(anchorPt.x.roundToInt(), anchorPt.y.roundToInt()),
+                                        anchorPt.y > windowHeightPx / 2f,
+                                    )
                                 }
                             }
                         },

@@ -33,6 +33,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -66,9 +67,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -88,6 +88,7 @@ import org.arkikeskus.launcher.ui.AppActions
 import org.arkikeskus.launcher.ui.AppShortcuts
 import org.arkikeskus.launcher.ui.DragSource
 import org.arkikeskus.launcher.ui.HomeDragController
+import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.RenameDialog
 import org.arkikeskus.launcher.ui.component.AppIcon
@@ -187,20 +188,22 @@ fun AppDrawerScreen(
             anchor = anchor,
             preferAbove = preferAbove,
             actions = listOf(
-                PopupAction(stringResource(R.string.app_info)) { AppActions.openAppInfo(context, app) },
-                PopupAction(stringResource(R.string.rename)) { renameTarget = app },
+                PopupAction(stringResource(R.string.app_info), LauncherIcons.Info) { AppActions.openAppInfo(context, app) },
+                PopupAction(stringResource(R.string.rename), LauncherIcons.Edit) { renameTarget = app },
                 PopupAction(
                     stringResource(if (inHome) R.string.remove_from_home else R.string.add_to_home),
+                    if (inHome) LauncherIcons.Close else LauncherIcons.Add,
                 ) {
                     if (inHome) viewModel.removeFromHome(app) else viewModel.addToHome(app)
                 },
                 PopupAction(
                     stringResource(if (inDock) R.string.remove_from_dock else R.string.add_to_dock),
+                    if (inDock) LauncherIcons.Close else LauncherIcons.Add,
                 ) {
                     if (inDock) viewModel.removeFromDock(app) else viewModel.addToDock(app)
                 },
-                PopupAction(stringResource(R.string.hide_app)) { viewModel.hideApp(app) },
-                PopupAction(stringResource(R.string.uninstall)) { AppActions.uninstall(context, app) },
+                PopupAction(stringResource(R.string.hide_app), LauncherIcons.VisibilityOff) { viewModel.hideApp(app) },
+                PopupAction(stringResource(R.string.uninstall), LauncherIcons.Delete) { AppActions.uninstall(context, app) },
             ),
             onDismiss = { menuTarget = null },
             onPinShortcut = { item ->
@@ -346,7 +349,7 @@ private fun AppDrawerContent(
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = { onQueryChange("") }) {
-                                Text("✕", color = Accent)
+                                Icon(painter = painterResource(LauncherIcons.Close), contentDescription = null, tint = Accent)
                             }
                         }
                     },
@@ -791,7 +794,7 @@ private fun ContactResultRow(contact: SearchResult.Contact) {
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
-            }) { Text("📞", color = Accent, modifier = Modifier.semantics { contentDescription = callDesc }) }
+            }) { Icon(painter = painterResource(LauncherIcons.Call), contentDescription = callDesc, tint = Accent) }
             IconButton(onClick = {
                 runCatching {
                     context.startActivity(
@@ -800,7 +803,7 @@ private fun ContactResultRow(contact: SearchResult.Contact) {
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
-            }) { Text("✉", color = Accent, modifier = Modifier.semantics { contentDescription = messageDesc }) }
+            }) { Icon(painter = painterResource(LauncherIcons.Message), contentDescription = messageDesc, tint = Accent) }
         }
     }
 }

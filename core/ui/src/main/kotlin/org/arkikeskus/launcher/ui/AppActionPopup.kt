@@ -1,9 +1,11 @@
 package org.arkikeskus.launcher.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -15,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,6 +35,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -45,16 +49,24 @@ import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.expressive.Accent
+import org.arkikeskus.launcher.ui.expressive.ExpressiveTheme
+import org.arkikeskus.launcher.ui.expressive.LocalExpressivePalette
 
-/** One action row in the long-press popup (e.g. "App info", "Remove from home"). */
-data class PopupAction(val label: String, val onClick: () -> Unit)
+/** One action row in the long-press popup (e.g. "App info", "Remove from home"); optional leading icon. */
+data class PopupAction(val label: String, @DrawableRes val icon: Int? = null, val onClick: () -> Unit)
+
+/** One icon+label row in a generic [IconMenuPopup] (e.g. "Launcher", "Wallpaper"). */
+data class IconMenuItem(@DrawableRes val icon: Int, val label: String, val onClick: () -> Unit)
 
 private const val POPUP_MARGIN_PX = 24
+private val CARD_WIDTH = 232.dp
 
 /**
  * The Pixel-style long-press popup, shared by the home screen and the app drawer. Shows the app's
  * deep shortcuts (queried off the main thread) above the caller-supplied [actions], with a caret
- * pointing at the icon ([anchor] in root coords; [preferAbove] for dock/bottom items).
+ * pointing at the icon ([anchor] in root coords; [preferAbove] for dock/bottom items). Styled with
+ * the shared Version C expressive palette.
  */
 @Composable
 fun AppActionPopup(
@@ -66,16 +78,97 @@ fun AppActionPopup(
     onPinShortcut: ((AppShortcuts.Item) -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current
-    val windowWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
-    val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
-    val cardWidth = 232.dp
-
     var shortcuts by remember(app.key) { mutableStateOf<List<AppShortcuts.Item>>(emptyList()) }
     LaunchedEffect(app.key) {
         shortcuts = withContext(Dispatchers.IO) { AppShortcuts.query(context, app) }
     }
 
+    ExpressivePopupCard(anchor = anchor, preferAbove = preferAbove, onDismiss = onDismiss) {
+        shortcuts.forEach { shortcut ->
+            ShortcutPopupRow(
+                text = shortcut.label,
+                onClick = {
+                    AppShortcuts.start(context, shortcut)
+                    onDismiss()
+                },
+                onPin = onPinShortcut?.let {
+                    {
+                        it(shortcut)
+                        onDismiss()
+                    }
+                },
+            )
+        }
+        if (shortcuts.isNotEmpty()) {
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = LocalExpressivePalette.current.trackOff,
+            )
+        }
+        actions.forEach { action ->
+            PopupRow(action.label, action.icon) {
+                action.onClick()
+                onDismiss()
+            }
+        }
+    }
+}
+
+/**
+ * A generic icon+label popup with the same Version C card/caret/positioning as [AppActionPopup].
+ * Used by the home empty-area long-press menu (Launcher / Wallpaper / …).
+ */
+@Composable
+fun IconMenuPopup(
+    anchor: IntOffset,
+    preferAbove: Boolean,
+    items: List<IconMenuItem>,
+    onDismiss: () -> Unit,
+) {
+    ExpressivePopupCard(anchor = anchor, preferAbove = preferAbove, onDismiss = onDismiss, showCaret = false) {
+        items.forEach { item ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        item.onClick()
+                        onDismiss()
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    painter = painterResource(item.icon),
+                    contentDescription = null,
+                    tint = Accent,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = LocalExpressivePalette.current.text,
+                    modifier = Modifier.padding(start = 16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Shared Version C popup chrome: an anchored, dismissible rounded card (with a caret pointing at the
+ * icon) wrapped in [ExpressiveTheme] so it resolves the warm-orange dark/light palette regardless of
+ * the caller. [content] is the scrollable column of rows.
+ */
+@Composable
+private fun ExpressivePopupCard(
+    anchor: IntOffset,
+    preferAbove: Boolean,
+    onDismiss: () -> Unit,
+    showCaret: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val density = LocalDensity.current
+    val windowWidthPx = LocalWindowInfo.current.containerSize.width.toFloat()
     val positionProvider = remember(anchor, preferAbove) {
         AnchoredPopupPositionProvider(anchor, preferAbove)
     }
@@ -84,65 +177,40 @@ fun AppActionPopup(
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        val cardWidthPx = with(density) { cardWidth.toPx() }
-        val caretWidthPx = with(density) { 22.dp.toPx() }
-        val cardLeft = (anchor.x - cardWidthPx / 2f).coerceIn(
-            POPUP_MARGIN_PX.toFloat(),
-            (windowWidthPx - cardWidthPx - POPUP_MARGIN_PX).coerceAtLeast(POPUP_MARGIN_PX.toFloat()),
-        )
-        val caretStart = with(density) {
-            ((anchor.x - cardLeft) - caretWidthPx / 2f)
-                .coerceIn(14f, cardWidthPx - caretWidthPx - 14f)
-                .toDp()
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            // The caret is left-aligned (not centered) so [caretStart] is a true offset from the
-            // card's left edge — otherwise the Column would re-centre it and it would miss the icon
-            // for off-centre anchors (e.g. an edge column in a 6-wide drawer).
-            if (!preferAbove) Caret(pointingUp = true, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = cardColor,
-                tonalElevation = 3.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.width(cardWidth),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 520.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(vertical = 8.dp),
-                ) {
-                    shortcuts.forEach { shortcut ->
-                        ShortcutPopupRow(
-                            text = shortcut.label,
-                            onClick = {
-                                AppShortcuts.start(context, shortcut)
-                                onDismiss()
-                            },
-                            onPin = onPinShortcut?.let {
-                                {
-                                    it(shortcut)
-                                    onDismiss()
-                                }
-                            },
-                        )
-                    }
-                    if (shortcuts.isNotEmpty()) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
-                    actions.forEach { action ->
-                        PopupRow(action.label) {
-                            action.onClick()
-                            onDismiss()
-                        }
-                    }
-                }
+        ExpressiveTheme {
+            val palette = LocalExpressivePalette.current
+            val cardColor = palette.surfaceHi
+            val cardWidthPx = with(density) { CARD_WIDTH.toPx() }
+            val caretWidthPx = with(density) { 22.dp.toPx() }
+            val cardLeft = (anchor.x - cardWidthPx / 2f).coerceIn(
+                POPUP_MARGIN_PX.toFloat(),
+                (windowWidthPx - cardWidthPx - POPUP_MARGIN_PX).coerceAtLeast(POPUP_MARGIN_PX.toFloat()),
+            )
+            val caretStart = with(density) {
+                ((anchor.x - cardLeft) - caretWidthPx / 2f)
+                    .coerceIn(14f, cardWidthPx - caretWidthPx - 14f)
+                    .toDp()
             }
-            if (preferAbove) Caret(pointingUp = false, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Left-aligned caret so [caretStart] is a true offset from the card's left edge.
+                if (showCaret && !preferAbove) Caret(pointingUp = true, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = cardColor,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 10.dp,
+                    modifier = Modifier.width(CARD_WIDTH),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 520.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp),
+                        content = content,
+                    )
+                }
+                if (showCaret && preferAbove) Caret(pointingUp = false, color = cardColor, modifier = Modifier.align(Alignment.Start).padding(start = caretStart))
+            }
         }
     }
 }
@@ -160,7 +228,7 @@ private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onPin: (() -> Un
         Text(
             text = text,
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = LocalExpressivePalette.current.text,
             modifier = Modifier
                 .weight(1f)
                 .clickable(onClick = onClick)
@@ -177,7 +245,7 @@ private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onPin: (() -> Un
             ) {
                 Text(
                     text = "+",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Accent,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Medium,
                 )
@@ -187,16 +255,29 @@ private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onPin: (() -> Un
 }
 
 @Composable
-private fun PopupRow(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurface,
+private fun PopupRow(text: String, @DrawableRes icon: Int?, onClick: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = Accent,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = LocalExpressivePalette.current.text,
+            modifier = Modifier.padding(start = if (icon != null) 16.dp else 0.dp),
+        )
+    }
 }
 
 /** Small triangle that visually ties the popup to the icon it acts on. */

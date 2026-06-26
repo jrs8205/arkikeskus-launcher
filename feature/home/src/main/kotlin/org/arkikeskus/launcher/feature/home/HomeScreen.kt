@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
+import android.content.Intent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -80,6 +81,9 @@ import org.arkikeskus.launcher.ui.AppActions
 import org.arkikeskus.launcher.ui.AppShortcuts
 import org.arkikeskus.launcher.ui.DragSource
 import org.arkikeskus.launcher.ui.HomeDragController
+import org.arkikeskus.launcher.ui.IconMenuItem
+import org.arkikeskus.launcher.ui.IconMenuPopup
+import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.PopupAction
 import org.arkikeskus.launcher.ui.RenameDialog
 import org.arkikeskus.launcher.ui.rememberHomeDragController
@@ -112,6 +116,8 @@ fun HomeScreen(
     var menuTarget by remember { mutableStateOf<AppMenuTarget?>(null) }
     var renameTarget by remember { mutableStateOf<AppItem?>(null) }
     var openFolderId by remember { mutableStateOf<Long?>(null) }
+    // Empty-area long-press options popup (anchor + whether it flips above the press point).
+    var homeOptions by remember { mutableStateOf<Pair<IntOffset, Boolean>?>(null) }
     val defaultFolderName = stringResource(R.string.folder_default_name)
 
     // Shared drag state spanning the workspace, dock and drawer (Launcher3-style drag layer/controller).
@@ -176,7 +182,7 @@ fun HomeScreen(
                 onRemoveShortcut = { viewModel.removeShortcut(it) },
                 onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },
                 onAddToFolder = { app, folderId -> viewModel.addToFolder(app, folderId) },
-                onOpenSettings = onOpenSettings,
+                onEmptyAreaMenu = { anchor, above -> homeOptions = anchor to above },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -247,21 +253,43 @@ fun HomeScreen(
             // icon), so it never runs off the bottom of the screen. Decided where the anchor is built.
             preferAbove = menu.preferAbove,
             actions = listOf(
-                PopupAction(stringResource(R.string.app_info)) { AppActions.openAppInfo(context, menu.app) },
-                PopupAction(stringResource(R.string.rename)) { renameTarget = menu.app },
+                PopupAction(stringResource(R.string.app_info), LauncherIcons.Info) { AppActions.openAppInfo(context, menu.app) },
+                PopupAction(stringResource(R.string.rename), LauncherIcons.Edit) { renameTarget = menu.app },
                 PopupAction(
                     stringResource(if (menu.source == DragSource.Dock) R.string.dock_remove else R.string.home_remove),
+                    LauncherIcons.Close,
                 ) {
                     if (menu.source == DragSource.Dock) viewModel.removeFromDock(menu.app)
                     else viewModel.removeFromHome(menu.app)
                 },
-                PopupAction(stringResource(R.string.uninstall)) { AppActions.uninstall(context, menu.app) },
+                PopupAction(stringResource(R.string.uninstall), LauncherIcons.Delete) { AppActions.uninstall(context, menu.app) },
             ),
             onDismiss = { menuTarget = null },
             onPinShortcut = { item ->
                 AppShortcuts.pin(context, item)
                 viewModel.addPinnedShortcut(item.packageName, item.id, item.userSerial)
             },
+        )
+    }
+
+    homeOptions?.let { (anchor, above) ->
+        IconMenuPopup(
+            anchor = anchor,
+            preferAbove = above,
+            items = listOf(
+                IconMenuItem(R.drawable.ic_home_settings, stringResource(R.string.home_options_settings)) {
+                    onOpenSettings()
+                },
+                IconMenuItem(R.drawable.ic_wallpaper, stringResource(R.string.home_options_wallpaper)) {
+                    runCatching {
+                        context.startActivity(
+                            Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), null)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                },
+            ),
+            onDismiss = { homeOptions = null },
         )
     }
 

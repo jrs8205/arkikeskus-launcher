@@ -16,4 +16,6 @@
     <string name="folder_default_name">Kansio</string>
     <string name="folder_name_label">Kansion nimi</string>
     <string name="folder_long_press_hint">Paina sovellusta pitkään poistaaksesi sen kansiosta</string>
+    <string name="home_options_settings">Aloitusnäyttö</string>
+    <string name="home_options_wallpaper">Taustakuva</string>
 </resources>
