@@ -41,4 +41,19 @@ class CalculatorSearchProviderTest {
         assertThat(provider.query("7/0")).isEmpty()
         assertThat(provider.query("0/0")).isEmpty()
     }
+
+    // Bare-number guard: a lone integer or decimal is not a calculation ("5 = 5" is noise).
+    @Test fun `returns empty for a bare integer`() = runTest {
+        assertThat(provider.query("5")).isEmpty()
+        assertThat(provider.query("2017")).isEmpty()
+    }
+
+    @Test fun `returns empty for a bare decimal`() = runTest {
+        assertThat(provider.query("3.14")).isEmpty()
+    }
+
+    @Test fun `bare number with operator still evaluates`() = runTest {
+        // Regression: ensure the guard does not suppress real expressions.
+        assertThat(provider.query("5+0").filterIsInstance<SearchResult.Calculation>()).isNotEmpty()
+    }
 }

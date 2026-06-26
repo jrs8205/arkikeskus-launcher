@@ -51,7 +51,7 @@ class ContactSearchProvider @Inject constructor(
     override suspend fun query(query: String): List<SearchResult> =
         dataSource.search(query, LIMIT).map {
             SearchResult.Contact(it.name, it.lookupUri, it.number, it.photoUri, it.id)
-        }
+        }.take(LIMIT)
 
     private companion object { const val LIMIT = 5 }
 }

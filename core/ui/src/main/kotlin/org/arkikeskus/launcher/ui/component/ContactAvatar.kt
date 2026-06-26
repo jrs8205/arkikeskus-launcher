@@ -21,7 +21,7 @@ import org.arkikeskus.launcher.ui.expressive.Accent
 /** A round contact avatar: the photo when available, otherwise an initial on an accent circle. */
 @Composable
 fun ContactAvatar(name: String, photoUri: String?, modifier: Modifier = Modifier, size: Dp = 40.dp) {
-    if (photoUri != null) {
+    if (!photoUri.isNullOrEmpty()) {
         AsyncImage(
             model = photoUri,
             contentDescription = null,

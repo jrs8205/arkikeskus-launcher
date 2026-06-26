@@ -40,6 +40,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +66,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -323,11 +327,23 @@ private fun AppDrawerContent(
         ) {
             DragHandle()
             if (showSearch) {
-                OutlinedTextField(
+                val searchPalette = LocalExpressivePalette.current
+                // Version C: rounded pill, surfaceHi background, Accent cursor, no underline.
+                TextField(
                     value = query,
                     onValueChange = onQueryChange,
                     singleLine = true,
                     placeholder = { Text(stringResource(R.string.app_drawer_search_hint)) },
+                    shape = RoundedCornerShape(20.dp),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = searchPalette.surfaceHi,
+                        unfocusedContainerColor = searchPalette.surfaceHi,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = Accent,
+                        focusedTextColor = searchPalette.text,
+                        unfocusedTextColor = searchPalette.text,
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -390,7 +406,7 @@ private fun AppDrawerContent(
                         }
                         items(items = contactResults, key = { it.id }, span = { GridItemSpan(maxLineSpan) },
                             contentType = { "contact" }) { contact ->
-                            ContactResultRow(contact, context)
+                            ContactResultRow(contact)
                         }
                     }
                 }
@@ -730,8 +746,11 @@ private fun CalcResultCard(calc: SearchResult.Calculation, onCopy: () -> Unit) {
 }
 
 @Composable
-private fun ContactResultRow(contact: SearchResult.Contact, context: android.content.Context) {
+private fun ContactResultRow(contact: SearchResult.Contact) {
+    val context = LocalContext.current
     val p = LocalExpressivePalette.current
+    val callDesc = stringResource(R.string.search_contact_call)
+    val messageDesc = stringResource(R.string.search_contact_message)
     ExpressiveCard(onClick = {
         runCatching {
             context.startActivity(
@@ -740,6 +759,7 @@ private fun ContactResultRow(contact: SearchResult.Contact, context: android.con
             )
         }
     }) {
+        // Avatar is decorative here — the contact name provides the accessible label.
         ContactAvatar(name = contact.name, photoUri = contact.photoUri)
         Text(contact.name, color = p.text, fontSize = 16.sp,
             modifier = Modifier.weight(1f).padding(start = 14.dp))
@@ -748,20 +768,20 @@ private fun ContactResultRow(contact: SearchResult.Contact, context: android.con
                 runCatching {
                     context.startActivity(
                         android.content.Intent(android.content.Intent.ACTION_DIAL,
-                            android.net.Uri.parse("tel:${contact.number}"))
+                            android.net.Uri.fromParts("tel", contact.number, null))
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
-            }) { Text("📞", color = Accent) }
+            }) { Text("📞", color = Accent, modifier = Modifier.semantics { contentDescription = callDesc }) }
             IconButton(onClick = {
                 runCatching {
                     context.startActivity(
                         android.content.Intent(android.content.Intent.ACTION_SENDTO,
-                            android.net.Uri.parse("smsto:${contact.number}"))
+                            android.net.Uri.fromParts("smsto", contact.number, null))
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
-            }) { Text("✉", color = Accent) }
+            }) { Text("✉", color = Accent, modifier = Modifier.semantics { contentDescription = messageDesc }) }
         }
     }
 }

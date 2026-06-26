@@ -14,6 +14,9 @@ class CalculatorSearchProvider @Inject constructor() : SearchProvider {
 
     override suspend fun query(query: String): List<SearchResult> {
         val q = query.trim()
+        // A lone number like "5" or "3.14" is not a useful calculation — skip it to avoid
+        // showing redundant "5 = 5" results.  Unit conversions contain letters, so they pass.
+        if (Regex("^-?\\d*\\.?\\d+$").matches(q)) return emptyList()
         val result = evalUnit(q) ?: evalArithmetic(q) ?: return emptyList()
         if (!result.isFinite()) return emptyList()
         return listOf(SearchResult.Calculation(q, format(result)))
