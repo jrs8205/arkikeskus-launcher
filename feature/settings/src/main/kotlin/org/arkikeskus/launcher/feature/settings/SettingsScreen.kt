@@ -8,6 +8,7 @@ import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.DrawableRes
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -57,8 +59,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.component.AppIcon
 import org.arkikeskus.launcher.ui.component.NotificationBadge
 import org.arkikeskus.launcher.ui.expressive.Accent
@@ -144,7 +148,7 @@ fun SettingsScreen(
                 ExpressiveActionRow(
                     label = stringResource(R.string.settings_new_drawer_folder),
                     description = stringResource(R.string.settings_new_drawer_folder_desc),
-                    trailing = "+",
+                    trailingIcon = LauncherIcons.Add,
                 ) {
                     viewModel.createDrawerFolder(newFolderName)
                     android.widget.Toast.makeText(context, folderCreatedMsg, android.widget.Toast.LENGTH_SHORT).show()
@@ -327,7 +331,7 @@ private fun StepperRow(label: String, value: Int, min: Int, max: Int, onValueCha
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            StepButton("−") { if (value > min) onValueChange(value - 1) }
+            StepButton(LauncherIcons.Remove) { if (value > min) onValueChange(value - 1) }
             Text(
                 text = "$value",
                 modifier = Modifier.widthIn(min = 26.dp),
@@ -336,13 +340,13 @@ private fun StepperRow(label: String, value: Int, min: Int, max: Int, onValueCha
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
             )
-            StepButton("+") { if (value < max) onValueChange(value + 1) }
+            StepButton(LauncherIcons.Add) { if (value < max) onValueChange(value + 1) }
         }
     }
 }
 
 @Composable
-private fun StepButton(symbol: String, onClick: () -> Unit) {
+private fun StepButton(@DrawableRes icon: Int, onClick: () -> Unit) {
     val p = LocalExpressivePalette.current
     Box(
         modifier = Modifier
@@ -352,7 +356,12 @@ private fun StepButton(symbol: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(symbol, color = Accent, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = Accent,
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 

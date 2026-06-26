@@ -15,4 +15,6 @@ object LauncherIcons {
     @DrawableRes val VisibilityOff: Int = R.drawable.ic_visibility_off
     @DrawableRes val Call: Int = R.drawable.ic_call
     @DrawableRes val Message: Int = R.drawable.ic_message
+    @DrawableRes val ChevronRight: Int = R.drawable.ic_chevron_right
+    @DrawableRes val Remove: Int = R.drawable.ic_remove
 }

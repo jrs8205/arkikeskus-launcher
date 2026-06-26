@@ -409,7 +409,7 @@ private fun AppDrawerContent(
                         }
                         items(items = settingResults, key = { it.id }, span = { GridItemSpan(maxLineSpan) },
                             contentType = { "setting" }) { setting ->
-                            ExpressiveActionRow(label = setting.title, description = "", trailing = "›") {
+                            ExpressiveActionRow(label = setting.title, description = "") {
                                 runCatching {
                                     context.startActivity(
                                         android.content.Intent(setting.action)

@@ -401,7 +401,7 @@ fun Workspace(
                                     val anchorPt = dragController.gridBounds.topLeft + down.position
                                     onEmptyAreaMenu(
                                         IntOffset(anchorPt.x.roundToInt(), anchorPt.y.roundToInt()),
-                                        anchorPt.y > windowHeightPx / 2f,
+                                        anchorPt.y > windowHeightPx * 0.45f,
                                     )
                                 }
                             }
@@ -584,7 +584,11 @@ fun Workspace(
                                                 // flips above) and its BOTTOM edge otherwise (popup
                                                 // below) — so the popup never covers the icon.
                                                 val cellTop = dragController.gridBounds.top + d.cellY * cellH
-                                                val above = cellTop + cellH / 2f > windowHeightPx / 2f
+                                                // Bias toward opening upward: only icons in the top
+                                                // ~45% open downward (room below); the middle and
+                                                // everything lower open up so a tall popup never
+                                                // covers the dock.
+                                                val above = cellTop + cellH / 2f > windowHeightPx * 0.45f
                                                 val anchorX = dragController.gridBounds.left + d.cellX * cellW + cellW / 2f
                                                 val anchorY = if (above) cellTop else cellTop + cellH
                                                 onAppMenu(

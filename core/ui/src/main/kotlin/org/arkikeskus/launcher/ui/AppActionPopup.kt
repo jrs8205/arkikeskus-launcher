@@ -36,13 +36,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
@@ -243,11 +241,11 @@ private fun ShortcutPopupRow(text: String, onClick: () -> Unit, onPin: (() -> Un
                     .clickable(onClick = onPin),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "+",
-                    color = Accent,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Medium,
+                Icon(
+                    painter = painterResource(LauncherIcons.Add),
+                    contentDescription = null,
+                    tint = Accent,
+                    modifier = Modifier.size(22.dp),
                 )
             }
         }
