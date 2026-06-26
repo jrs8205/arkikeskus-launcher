@@ -37,7 +37,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +45,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -56,51 +54,14 @@ import androidx.compose.ui.res.stringResource
 import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.ui.component.AppIcon
 import org.arkikeskus.launcher.ui.component.NotificationBadge
-
-// --- "Version C" settings theme ------------------------------------------------------------------
-// A self-contained, expressive look for the settings page (warm-orange accent, each row its own
-// rounded card). It deliberately does NOT use the app-wide Arkikeskus (blue) theme — the colours are
-// applied explicitly here so the rest of the launcher keeps its identity. Tokens from the UI spec.
-
-private val Accent = Color(0xFFE2714A)
-
-private data class SettingsPalette(
-    val bg: Color,
-    val surfaceHi: Color,
-    val text: Color,
-    val dim: Color,
-    val faint: Color,
-    val trackOff: Color,
-    val thumbOff: Color,
-    val btn: Color,
-    val shadow: Dp,
-)
-
-private val DarkPalette = SettingsPalette(
-    bg = Color(0xFF0C0E13),
-    surfaceHi = Color(0xFF1D222B),
-    text = Color(0xFFE9EBEE),
-    dim = Color(0xFF9AA1AB),
-    faint = Color(0xFF6C7079),
-    trackOff = Color(0xFF3A404A),
-    thumbOff = Color(0xFFAEB4BD),
-    btn = Color.White.copy(alpha = 0.07f),
-    shadow = 0.dp,
-)
-
-private val LightPalette = SettingsPalette(
-    bg = Color(0xFFECEEF2),
-    surfaceHi = Color(0xFFF4F6F9),
-    text = Color(0xFF1A1C1E),
-    dim = Color(0xFF5B616A),
-    faint = Color(0xFF9499A1),
-    trackOff = Color(0xFFC8CCD3),
-    thumbOff = Color(0xFFFFFFFF),
-    btn = Color.Black.copy(alpha = 0.05f),
-    shadow = 1.dp,
-)
-
-private val LocalSettingsPalette = staticCompositionLocalOf { LightPalette }
+import org.arkikeskus.launcher.ui.expressive.Accent
+import org.arkikeskus.launcher.ui.expressive.DarkExpressivePalette
+import org.arkikeskus.launcher.ui.expressive.ExpressiveActionRow
+import org.arkikeskus.launcher.ui.expressive.ExpressiveCard
+import org.arkikeskus.launcher.ui.expressive.ExpressivePalette
+import org.arkikeskus.launcher.ui.expressive.ExpressiveSectionTitle
+import org.arkikeskus.launcher.ui.expressive.LightExpressivePalette
+import org.arkikeskus.launcher.ui.expressive.LocalExpressivePalette
 
 @Composable
 fun SettingsScreen(
@@ -113,9 +74,9 @@ fun SettingsScreen(
     val context = LocalContext.current
     val previewIcon = rememberLauncherIconBitmap()
     var showHiddenManager by remember { mutableStateOf(false) }
-    val palette = if (isSystemInDarkTheme()) DarkPalette else LightPalette
+    val palette = if (isSystemInDarkTheme()) DarkExpressivePalette else LightExpressivePalette
 
-    CompositionLocalProvider(LocalSettingsPalette provides palette) {
+    CompositionLocalProvider(LocalExpressivePalette provides palette) {
         if (showHiddenManager) {
             HiddenAppsManager(
                 apps = allApps,
@@ -145,28 +106,28 @@ fun SettingsScreen(
                     modifier = Modifier.padding(start = 6.dp, top = 10.dp, bottom = 6.dp),
                 )
 
-                SectionTitle(stringResource(R.string.settings_gestures))
+                ExpressiveSectionTitle(stringResource(R.string.settings_gestures))
                 SwitchRow(stringResource(R.string.settings_swipe_up_drawer), s.swipeUpForDrawer, viewModel::setSwipeUp)
                 SwitchRow(stringResource(R.string.settings_swipe_down_notif), s.swipeDownForNotifications, viewModel::setSwipeDown)
 
-                SectionTitle(stringResource(R.string.settings_dock))
+                ExpressiveSectionTitle(stringResource(R.string.settings_dock))
                 SwitchRow(stringResource(R.string.settings_dock_show), s.dockEnabled, viewModel::setDockEnabled)
                 StepperRow(stringResource(R.string.settings_dock_icons), s.dockColumns, 3, 7, viewModel::setDockColumns)
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showDockLabels, viewModel::setShowDockLabels)
                 SliderRow(stringResource(R.string.settings_dock_bg), s.dockBackgroundOpacity, viewModel::setDockBackgroundOpacity)
                 DockPreview(opacity = s.dockBackgroundOpacity, icon = previewIcon)
 
-                SectionTitle(stringResource(R.string.settings_drawer))
+                ExpressiveSectionTitle(stringResource(R.string.settings_drawer))
                 StepperRow(stringResource(R.string.settings_columns), s.drawerColumns, 3, 7, viewModel::setDrawerColumns)
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showDrawerLabels, viewModel::setShowDrawerLabels)
                 SwitchRow(stringResource(R.string.settings_drawer_search), s.showDrawerSearch, viewModel::setShowDrawerSearch)
-                ActionRow(
+                ExpressiveActionRow(
                     label = stringResource(R.string.settings_hidden_apps),
                     description = stringResource(R.string.settings_hidden_apps_desc, hiddenKeys.size),
                 ) { showHiddenManager = true }
                 val newFolderName = stringResource(R.string.drawer_folder_default)
                 val folderCreatedMsg = stringResource(R.string.settings_drawer_folder_created)
-                ActionRow(
+                ExpressiveActionRow(
                     label = stringResource(R.string.settings_new_drawer_folder),
                     description = stringResource(R.string.settings_new_drawer_folder_desc),
                     trailing = "+",
@@ -175,14 +136,14 @@ fun SettingsScreen(
                     android.widget.Toast.makeText(context, folderCreatedMsg, android.widget.Toast.LENGTH_SHORT).show()
                 }
 
-                SectionTitle(stringResource(R.string.settings_home))
+                ExpressiveSectionTitle(stringResource(R.string.settings_home))
                 StepperRow(stringResource(R.string.settings_columns), s.homeColumns, 3, 7, viewModel::setHomeColumns)
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showHomeLabels, viewModel::setShowHomeLabels)
                 SwitchRow(stringResource(R.string.settings_page_indicator), s.showPageIndicator, viewModel::setShowPageIndicator)
 
                 // Themed (monochrome) icons need the adaptive-icon monochrome API (Android 13+).
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                    SectionTitle(stringResource(R.string.settings_icons))
+                    ExpressiveSectionTitle(stringResource(R.string.settings_icons))
                     SwitchRow(
                         stringResource(R.string.settings_themed_icons),
                         s.useThemedIcons,
@@ -190,7 +151,7 @@ fun SettingsScreen(
                     )
                 }
 
-                SectionTitle(stringResource(R.string.settings_notifications))
+                ExpressiveSectionTitle(stringResource(R.string.settings_notifications))
                 SwitchRow(stringResource(R.string.settings_notif_dots), s.showNotificationDots, viewModel::setShowNotificationDots)
                 SwitchRow(stringResource(R.string.settings_notif_count), s.notificationDotCount, viewModel::setNotificationDotCount)
                 SliderRow(
@@ -205,7 +166,7 @@ fun SettingsScreen(
                     showCount = s.notificationDotCount,
                     scale = s.notificationDotScale,
                 )
-                ActionRow(
+                ExpressiveActionRow(
                     label = stringResource(R.string.settings_notif_access),
                     description = stringResource(R.string.settings_notif_access_desc),
                 ) {
@@ -237,51 +198,14 @@ private fun openNotificationAccess(context: android.content.Context) {
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    val p = LocalSettingsPalette.current
-    Text(
-        text = text,
-        color = p.text,
-        fontSize = 20.sp,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = (-0.2).sp,
-        modifier = Modifier.padding(top = 26.dp, start = 4.dp, bottom = 12.dp),
-    )
-}
-
-/** A single rounded setting card (the standard inline-control row). */
-@Composable
-private fun SettingCard(
-    onClick: (() -> Unit)? = null,
-    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
-) {
-    val p = LocalSettingsPalette.current
-    Surface(
-        color = p.surfaceHi,
-        shape = RoundedCornerShape(20.dp),
-        shadowElevation = p.shadow,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 10.dp)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = content,
-        )
-    }
-}
-
-@Composable
 private fun RowLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier = modifier, color = LocalSettingsPalette.current.text, fontSize = 16.sp)
+    Text(text, modifier = modifier, color = LocalExpressivePalette.current.text, fontSize = 16.sp)
 }
 
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val p = LocalSettingsPalette.current
-    SettingCard {
+    val p = LocalExpressivePalette.current
+    ExpressiveCard {
         RowLabel(label, Modifier.weight(1f))
         Switch(
             checked = checked,
@@ -300,8 +224,8 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 
 @Composable
 private fun StepperRow(label: String, value: Int, min: Int, max: Int, onValueChange: (Int) -> Unit) {
-    val p = LocalSettingsPalette.current
-    SettingCard {
+    val p = LocalExpressivePalette.current
+    ExpressiveCard {
         RowLabel(label, Modifier.weight(1f))
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -323,7 +247,7 @@ private fun StepperRow(label: String, value: Int, min: Int, max: Int, onValueCha
 
 @Composable
 private fun StepButton(symbol: String, onClick: () -> Unit) {
-    val p = LocalSettingsPalette.current
+    val p = LocalExpressivePalette.current
     Box(
         modifier = Modifier
             .size(36.dp)
@@ -343,7 +267,7 @@ private fun SliderRow(
     onValueChange: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
 ) {
-    val p = LocalSettingsPalette.current
+    val p = LocalExpressivePalette.current
     Surface(
         color = p.surfaceHi,
         shape = RoundedCornerShape(20.dp),
@@ -366,20 +290,6 @@ private fun SliderRow(
     }
 }
 
-/** A link-style card: accent title + description, with a trailing chevron. */
-@Composable
-private fun ActionRow(label: String, description: String, trailing: String = "›", onClick: () -> Unit) {
-    val p = LocalSettingsPalette.current
-    SettingCard(onClick = onClick) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = Accent, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-            Text(description, color = p.dim, fontSize = 12.5.sp)
-        }
-        // Plus glyph reads as "add"; chevron reads as "opens a sub-screen".
-        Text(trailing, color = if (trailing == "+") Accent else p.faint, fontSize = 24.sp)
-    }
-}
-
 /**
  * Full-screen manager listing every app with a switch — toggle to hide/show it in the app drawer.
  * (Apps can also be hidden via the drawer long-press, but only restored here.)
@@ -392,7 +302,7 @@ private fun HiddenAppsManager(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val p = LocalSettingsPalette.current
+    val p = LocalExpressivePalette.current
     BackHandler(onBack = onBack)
     Surface(modifier = modifier, color = p.bg) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
