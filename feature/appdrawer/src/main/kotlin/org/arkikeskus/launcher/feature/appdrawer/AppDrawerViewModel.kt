@@ -4,11 +4,16 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.data.AppRepository
@@ -16,7 +21,10 @@ import org.arkikeskus.launcher.data.HomeLayoutRepository
 import org.arkikeskus.launcher.data.NotificationBadgeRepository
 import org.arkikeskus.launcher.data.SettingsRepository
 import org.arkikeskus.launcher.data.local.HomeItemEntity
+import org.arkikeskus.launcher.data.search.SearchAggregator
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.model.SearchResult
+import org.arkikeskus.launcher.model.SearchResults
 import javax.inject.Inject
 
 /** A drawer folder resolved to its member [apps] (for rendering). */
@@ -36,6 +44,9 @@ data class AppDrawerUiState(
     val notificationDotCount: Boolean = true,
     val notificationDotScale: Float = 1f,
     val useThemedIcons: Boolean = false,
+    val calc: SearchResult.Calculation? = null,
+    val settingResults: List<SearchResult.Setting> = emptyList(),
+    val contactResults: List<SearchResult.Contact> = emptyList(),
 )
 
 @HiltViewModel
@@ -44,9 +55,15 @@ class AppDrawerViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val homeLayoutRepository: HomeLayoutRepository,
     notificationBadgeRepository: NotificationBadgeRepository,
+    private val searchAggregator: SearchAggregator,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
+
+    @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
+    private val searchResults: Flow<SearchResults> = query
+        .debounce { if (it.isBlank()) 0L else 200L } // contacts hit ContentResolver; avoid per-keystroke
+        .mapLatest { searchAggregator.search(it) }    // mapLatest cancels the previous run
 
     val uiState: StateFlow<AppDrawerUiState> = combine(
         appRepository.apps,
@@ -55,13 +72,8 @@ class AppDrawerViewModel @Inject constructor(
         settingsRepository.dockFavorites,
         homeLayoutRepository.homeItems,
     ) { apps, q, settings, favorites, homeItems ->
-        val filtered = if (q.isBlank()) {
-            apps
-        } else {
-            apps.filter { it.label.contains(q.trim(), ignoreCase = true) }
-        }
         AppDrawerUiState(
-            apps = filtered,
+            apps = apps,
             query = q,
             columns = settings.drawerColumns,
             dockKeys = favorites.toSet(),
@@ -91,6 +103,18 @@ class AppDrawerViewModel @Inject constructor(
             val folderUis = folders.map { f -> DrawerFolderUi(f.id, f.name, f.appKeys.mapNotNull { byKey[it] }) }
             val inFolder = folders.flatMap { it.appKeys }.toSet()
             state.copy(apps = state.apps.filterNot { it.key in inFolder }, folders = folderUis)
+        }
+    }.combine(searchResults) { state, results ->
+        if (state.query.isBlank()) {
+            state // idle drawer: apps + folders already prepared above
+        } else {
+            state.copy(
+                apps = results.apps,          // hidden-aware app matches from AppSearchProvider
+                folders = emptyList(),         // no folders while searching
+                calc = results.calc,
+                settingResults = results.settings,
+                contactResults = results.contacts,
+            )
         }
     }.stateIn(
         scope = viewModelScope,
