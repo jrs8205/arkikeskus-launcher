@@ -12,6 +12,10 @@
 *.aab
 local.properties
 .kotlin/
+# Release signing material — never commit
+*.jks
+*.keystore
+keystore.properties
 # Icon source export (assets already copied into app/src/main/res)
 /launcher_L/
 # Design reference artifacts kept locally (not part of the app)
