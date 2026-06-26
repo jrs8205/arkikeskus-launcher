@@ -4,6 +4,9 @@
     <!-- Open the notification shade with a swipe-down gesture. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
+    <!-- Optional: contacts in app-drawer search; requested at runtime, gated by a setting. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
     <!-- See which apps expose a launcher activity (for the future app drawer). -->
     <queries>
         <intent>
