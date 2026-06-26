@@ -10,7 +10,7 @@ class CalculatorSearchProviderTest {
     private val provider = CalculatorSearchProvider()
 
     @Test fun `evaluates precedence and parentheses`() = runTest {
-        val r = provider.query("2+3*4") .filterIsInstance<SearchResult.Calculation>().single()
+        val r = provider.query("2+3*4").filterIsInstance<SearchResult.Calculation>().single()
         assertThat(r.result).isEqualTo("14")
         val r2 = provider.query("(2+3)*4").filterIsInstance<SearchResult.Calculation>().single()
         assertThat(r2.result).isEqualTo("20")
@@ -35,5 +35,10 @@ class CalculatorSearchProviderTest {
         assertThat(provider.query("camera")).isEmpty()
         assertThat(provider.query("")).isEmpty()
         assertThat(provider.query("2+")).isEmpty()
+    }
+
+    @Test fun `returns empty and never throws on division by zero`() = runTest {
+        assertThat(provider.query("7/0")).isEmpty()
+        assertThat(provider.query("0/0")).isEmpty()
     }
 }

@@ -15,6 +15,7 @@ class CalculatorSearchProvider @Inject constructor() : SearchProvider {
     override suspend fun query(query: String): List<SearchResult> {
         val q = query.trim()
         val result = evalUnit(q) ?: evalArithmetic(q) ?: return emptyList()
+        if (!result.isFinite()) return emptyList()
         return listOf(SearchResult.Calculation(q, format(result)))
     }
 
@@ -29,12 +30,9 @@ class CalculatorSearchProvider @Inject constructor() : SearchProvider {
 
     private fun convert(amount: Double, from: String, to: String): Double? {
         // Length (base: metre), mass (base: kg), temperature handled separately.
-        val length = mapOf("mm" to 0.001, "cm" to 0.01, "m" to 1.0, "km" to 1000.0,
-            "in" to 0.0254, "ft" to 0.3048, "mi" to 1609.344)
-        val mass = mapOf("g" to 0.001, "kg" to 1.0, "lb" to 0.45359237, "oz" to 0.0283495231)
         return when {
-            from in length && to in length -> amount * length.getValue(from) / length.getValue(to)
-            from in mass && to in mass -> amount * mass.getValue(from) / mass.getValue(to)
+            from in LENGTH && to in LENGTH -> amount * LENGTH.getValue(from) / LENGTH.getValue(to)
+            from in MASS && to in MASS -> amount * MASS.getValue(from) / MASS.getValue(to)
             from == "c" && to == "f" -> amount * 9 / 5 + 32
             from == "f" && to == "c" -> (amount - 32) * 5 / 9
             else -> null
@@ -95,5 +93,8 @@ class CalculatorSearchProvider @Inject constructor() : SearchProvider {
 
     private companion object {
         val UNIT_PATTERN = Regex("""([\d.]+)\s*([a-z]+)\s+to\s+([a-z]+)""")
+        val LENGTH = mapOf("mm" to 0.001, "cm" to 0.01, "m" to 1.0, "km" to 1000.0,
+            "in" to 0.0254, "ft" to 0.3048, "mi" to 1609.344)
+        val MASS = mapOf("g" to 0.001, "kg" to 1.0, "lb" to 0.45359237, "oz" to 0.0283495231)
     }
 }
