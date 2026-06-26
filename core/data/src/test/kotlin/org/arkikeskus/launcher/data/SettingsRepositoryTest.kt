@@ -1,12 +1,6 @@
 package org.arkikeskus.launcher.data
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.emptyPreferences
 import com.google.common.truth.Truth.assertThat
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -17,15 +11,7 @@ import org.junit.Test
  */
 class SettingsRepositoryTest {
 
-    /** Minimal in-memory [DataStore]; `edit {}` routes through [updateData], so this is enough. */
-    private class FakeDataStore : DataStore<Preferences> {
-        private val state = MutableStateFlow(emptyPreferences())
-        override val data: Flow<Preferences> = state.asStateFlow()
-        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences =
-            transform(state.value).also { state.value = it }
-    }
-
-    private fun newRepository() = SettingsRepository(FakeDataStore())
+    private fun newRepository() = SettingsRepository(InMemoryDataStore())
 
     @Test
     fun `reorderVisibleDock keeps favorites hidden by the column cap`() = runTest {
