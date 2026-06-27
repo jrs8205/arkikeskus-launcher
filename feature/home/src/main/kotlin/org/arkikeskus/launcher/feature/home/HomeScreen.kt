@@ -1,6 +1,10 @@
 package org.arkikeskus.launcher.feature.home
 
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -122,6 +126,69 @@ fun HomeScreen(
     var homeOptions by remember { mutableStateOf<Pair<IntOffset, Boolean>?>(null) }
     val defaultFolderName = stringResource(R.string.folder_default_name)
 
+    val widgetHost = LocalAppWidgetHost.current
+    val appWidgetManager = remember { AppWidgetManager.getInstance(context) }
+    var showWidgetPicker by remember { mutableStateOf(false) }
+    // Pending widget across the bind/configure result steps: appWidgetId + provider.
+    var pendingWidget by remember { mutableStateOf<Pair<Int, AppWidgetProviderInfo>?>(null) }
+
+    fun finishWidget(id: Int, provider: AppWidgetProviderInfo) {
+        val (sx, sy) = defaultWidgetSpans(provider, context)
+        viewModel.addWidget(id, provider.provider.flattenToString(), sx, sy)
+        pendingWidget = null
+    }
+
+    val configureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val p = pendingWidget
+        if (p != null) {
+            if (result.resultCode == android.app.Activity.RESULT_OK) finishWidget(p.first, p.second)
+            else { widgetHost?.deleteAppWidgetId(p.first); pendingWidget = null }
+        }
+    }
+
+    fun configureOrFinish(id: Int, provider: AppWidgetProviderInfo) {
+        if (provider.configure != null) {
+            pendingWidget = id to provider
+            val intent = android.content.Intent(AppWidgetManager.ACTION_APPWIDGET_CONFIGURE).apply {
+                component = provider.configure
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+            }
+            runCatching { configureLauncher.launch(intent) }
+                .onFailure { widgetHost?.deleteAppWidgetId(id); pendingWidget = null }
+        } else {
+            finishWidget(id, provider)
+        }
+    }
+
+    val bindLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val p = pendingWidget
+        if (p != null) {
+            if (result.resultCode == android.app.Activity.RESULT_OK) configureOrFinish(p.first, p.second)
+            else { widgetHost?.deleteAppWidgetId(p.first); pendingWidget = null }
+        }
+    }
+
+    fun startAddWidget(provider: AppWidgetProviderInfo) {
+        val host = widgetHost ?: return
+        val id = host.allocateAppWidgetId()
+        val bound = runCatching { appWidgetManager.bindAppWidgetIdIfAllowed(id, provider.provider) }.getOrDefault(false)
+        if (bound) {
+            configureOrFinish(id, provider)
+        } else {
+            pendingWidget = id to provider
+            val intent = android.content.Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, provider.provider)
+            }
+            runCatching { bindLauncher.launch(intent) }
+                .onFailure { host.deleteAppWidgetId(id); pendingWidget = null }
+        }
+    }
+
     // Shared drag state spanning the workspace, dock and drawer (Launcher3-style drag layer/controller).
     // Created by LauncherShell and passed in so the app drawer can drag onto home; falls back to a
     // local one when HomeScreen is used standalone (previews/tests).
@@ -185,6 +252,10 @@ fun HomeScreen(
                 onCreateFolder = { target, dropped -> viewModel.createFolder(target, dropped, defaultFolderName) },
                 onAddToFolder = { app, folderId -> viewModel.addToFolder(app, folderId) },
                 onEmptyAreaMenu = { anchor, above -> homeOptions = anchor to above },
+                onRemoveWidget = { w ->
+                    widgetHost?.deleteAppWidgetId(w.appWidgetId)
+                    viewModel.removeWidget(w.rowId)
+                },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -285,20 +356,36 @@ fun HomeScreen(
         IconMenuPopup(
             anchor = anchor,
             preferAbove = above,
-            items = listOf(
-                IconMenuItem(R.drawable.ic_home_settings, stringResource(R.string.home_options_settings)) {
+            items = buildList {
+                if (!settings.desktopLocked) {
+                    add(IconMenuItem(R.drawable.ic_widgets, stringResource(R.string.home_options_widgets)) {
+                        showWidgetPicker = true
+                    })
+                }
+                add(IconMenuItem(R.drawable.ic_home_settings, stringResource(R.string.home_options_settings)) {
                     onOpenSettings()
-                },
-                IconMenuItem(R.drawable.ic_wallpaper, stringResource(R.string.home_options_wallpaper)) {
+                })
+                add(IconMenuItem(R.drawable.ic_wallpaper, stringResource(R.string.home_options_wallpaper)) {
                     runCatching {
                         context.startActivity(
                             Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), null)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     }
-                },
-            ),
+                })
+            },
             onDismiss = { homeOptions = null },
+        )
+    }
+
+    if (showWidgetPicker) {
+        WidgetPickerScreen(
+            onPick = { provider ->
+                showWidgetPicker = false
+                startAddWidget(provider)
+            },
+            onDismiss = { showWidgetPicker = false },
+            modifier = Modifier.fillMaxSize(),
         )
     }
 
