@@ -703,6 +703,8 @@ fun Workspace(
                                     ShortcutIconContent(entry, showLabels)
                                 }
                             }
+                            // Widget host rendering is implemented in a later milestone.
+                            is PlacedWidget -> {}
                             }
                         }
                 }

@@ -1,5 +1,6 @@
 package org.arkikeskus.launcher.feature.home
 
+import android.content.ComponentName
 import android.content.Context
 import android.util.Log
 import androidx.compose.ui.graphics.ImageBitmap
@@ -61,6 +62,18 @@ data class PlacedShortcut(
     override val page: Int,
     override val cellX: Int,
     override val cellY: Int,
+) : HomeEntry
+
+/** A bound app widget placed at a home cell, occupying [spanX]×[spanY] cells. */
+data class PlacedWidget(
+    val rowId: Long,
+    val appWidgetId: Int,
+    val provider: ComponentName,
+    override val page: Int,
+    override val cellX: Int,
+    override val cellY: Int,
+    val spanX: Int,
+    val spanY: Int,
 ) : HomeEntry
 
 data class HomeUiState(
@@ -133,6 +146,17 @@ class HomeViewModel @Inject constructor(
                             )
                         }
                     }
+                    row.isWidget -> {
+                        ComponentName.unflattenFromString(row.widgetProvider.orEmpty())?.let { provider ->
+                            PlacedWidget(
+                                rowId = row.id,
+                                appWidgetId = row.appWidgetId!!,
+                                provider = provider,
+                                page = row.page, cellX = row.cellX, cellY = row.cellY,
+                                spanX = row.spanX, spanY = row.spanY,
+                            )
+                        }
+                    }
                     else -> byKey[row.key]?.let { PlacedApp(it, row.page, row.cellX, row.cellY) }
                 }
             }
@@ -186,6 +210,15 @@ class HomeViewModel @Inject constructor(
             AppShortcuts.setPinned(context, remaining.packageName, remaining.userSerial, remaining.shortcutIds)
         }
     }
+
+    /** Places a freshly-bound widget on the home grid (spans are the picker's default). */
+    fun addWidget(appWidgetId: Int, provider: String, spanX: Int, spanY: Int) = viewModelScope.launch {
+        val columns = settingsRepository.settings.first().homeColumns
+        homeLayoutRepository.addWidget(appWidgetId, provider, spanX, spanY, columns)
+    }
+
+    /** Removes a placed widget row (caller frees the host id). */
+    fun removeWidget(rowId: Long) = viewModelScope.launch { homeLayoutRepository.removeWidget(rowId) }
 
     fun reorderDock(newOrder: List<AppItem>) =
         viewModelScope.launch { settingsRepository.reorderVisibleDock(newOrder.map { it.key }) }
