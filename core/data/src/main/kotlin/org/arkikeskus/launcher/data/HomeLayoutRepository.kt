@@ -253,11 +253,56 @@ class HomeLayoutRepository @Inject constructor(
         }
     }
 
+    /** Places a bound widget at the first free [spanX]×[spanY] rectangle on the home grid. */
+    suspend fun addWidget(appWidgetId: Int, provider: String, spanX: Int, spanY: Int, columns: Int) {
+        db.withTransaction {
+            val (page, x, y) = firstFreeRect(dao.getContainer(HOME), columns, spanX, spanY)
+            dao.insert(
+                HomeItemEntity(
+                    containerId = HOME,
+                    page = page, cellX = x, cellY = y,
+                    spanX = spanX.coerceIn(1, columns.coerceAtLeast(1)),
+                    spanY = spanY.coerceIn(1, ROWS),
+                    appWidgetId = appWidgetId,
+                    widgetProvider = provider,
+                ),
+            )
+        }
+    }
+
+    /** Removes a placed widget row (the host id is freed by the caller). */
+    suspend fun removeWidget(rowId: Long) {
+        dao.deleteById(rowId)
+    }
+
     companion object {
         /** Rows per home page (fixed for now). */
         const val ROWS = 6
 
         /** Off-grid parking slot used while swapping two cells inside a transaction. */
         private const val TEMP_SLOT = -1
+
+        /**
+         * First top-left cell where a [spanX]×[spanY] rectangle fits on the home grid without
+         * overlapping any item (each item occupies its own spanX×spanY cells; apps/folders/shortcuts
+         * are 1×1). Spans are clamped to the grid; advances to a fresh trailing page when needed.
+         */
+        fun firstFreeRect(items: List<HomeItemEntity>, columns: Int, spanX: Int, spanY: Int): Triple<Int, Int, Int> {
+            val cols = columns.coerceAtLeast(1)
+            val sx = spanX.coerceIn(1, cols)
+            val sy = spanY.coerceIn(1, ROWS)
+            val occupied = HashSet<Triple<Int, Int, Int>>()
+            for (e in items) for (dx in 0 until e.spanX) for (dy in 0 until e.spanY) {
+                occupied += Triple(e.page, e.cellX + dx, e.cellY + dy)
+            }
+            var page = 0
+            while (true) {
+                for (y in 0..ROWS - sy) for (x in 0..cols - sx) {
+                    val fits = (0 until sx).all { dx -> (0 until sy).all { dy -> Triple(page, x + dx, y + dy) !in occupied } }
+                    if (fits) return Triple(page, x, y)
+                }
+                page++
+            }
+        }
     }
 }
