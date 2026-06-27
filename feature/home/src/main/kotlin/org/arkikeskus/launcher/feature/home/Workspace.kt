@@ -132,9 +132,6 @@ fun Workspace(
     // While the edit frame is open, the root swipe-up detector must yield (it bails on localGestureActive),
     // so a handle/scrim drag can never open the drawer. Reset when the frame closes.
     LaunchedEffect(editingWidget) { dragController.localGestureActive = editingWidget != null }
-    var draggingWidget by remember { mutableStateOf<PlacedWidget?>(null) }
-    var widgetDragTopLeft by remember { mutableStateOf(Offset.Zero) }       // px, the widget's top-left while dragging
-    var widgetTargetCell by remember { mutableStateOf<IntOffset?>(null) }   // grid cell of the drag target (null = no fit)
     var widgetOptimistic by remember { mutableStateOf<Pair<Long, Triple<Int, Int, Int>>?>(null) }
 
     // Relocation of a folder or pinned shortcut, kept local: neither travels to the dock/drawer, so
@@ -777,7 +774,6 @@ fun Workspace(
                                             with(density) { (widget.spanX * cellW).toDp() },
                                             with(density) { (widget.spanY * cellH).toDp() },
                                         )
-                                        .graphicsLayer { alpha = if (draggingWidget?.rowId == widget.rowId) 0.4f else 1f }
                                         .pointerInput(widget.rowId, widget.page, widget.cellX, widget.cellY, widget.spanX, widget.spanY, locked, cellW, cellH, columns, rows, pageCount) {
                                             if (locked) return@pointerInput
                                             awaitEachGesture {
@@ -795,54 +791,10 @@ fun Workspace(
                                                 }
                                                 // held == null → timed out while still pressed (and not moved) → PICK UP.
                                                 if (held != null || movedEarly) return@awaitEachGesture
-                                                // PICK UP
-                                                draggingWidget = widget
-                                                dragController.localGestureActive = true
-                                                widgetDragTopLeft = Offset(widget.cellX * cellW, widget.cellY * cellH)
-                                                widgetTargetCell = IntOffset(widget.cellX, widget.cellY)
+                                                // held long-press → enter edit mode; move/resize happen in the overlay
+                                                editingWidget = widget
                                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                var moved = false
-                                                try {
-                                                    while (true) {
-                                                        val ev = awaitPointerEvent(PointerEventPass.Initial)
-                                                        val c = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                                        val delta = c.positionChange()
-                                                        c.consume()
-                                                        if (!c.pressed) break
-                                                        if (delta != Offset.Zero) {
-                                                            moved = true
-                                                            widgetDragTopLeft += delta
-                                                            val tx = (widgetDragTopLeft.x / cellW).roundToInt().coerceIn(0, (columns - widget.spanX).coerceAtLeast(0))
-                                                            val ty = (widgetDragTopLeft.y / cellH).roundToInt().coerceIn(0, (rows - widget.spanY).coerceAtLeast(0))
-                                                            val page = pagerState.currentPage
-                                                            widgetTargetCell = if (rectFreeOnGrid(widget.rowId, page, tx, ty, widget.spanX, widget.spanY)) IntOffset(tx, ty) else null
-                                                            if (!pagerState.isScrollInProgress) {
-                                                                if (widgetDragTopLeft.x > gridSize.width - edgePx && pagerState.currentPage < pageCount) {
-                                                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                                                                } else if (widgetDragTopLeft.x < edgePx && pagerState.currentPage > 0) {
-                                                                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                    val target = widgetTargetCell
-                                                    if (moved && target != null) {
-                                                        val page = pagerState.currentPage
-                                                        if (page != widget.page || target.x != widget.cellX || target.y != widget.cellY) {
-                                                            widgetOptimistic = widget.rowId to Triple(page, target.x, target.y)
-                                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                            scope.launch {
-                                                                if (!onSetWidgetBounds(widget.rowId, page, target.x, target.y, widget.spanX, widget.spanY)) widgetOptimistic = null
-                                                            }
-                                                        }
-                                                    } else if (!moved) {
-                                                        editingWidget = widget   // still long-press → edit mode
-                                                    }
-                                                } finally {
-                                                    draggingWidget = null
-                                                    widgetTargetCell = null
-                                                    dragController.localGestureActive = false
-                                                }
+                                                return@awaitEachGesture
                                             }
                                         },
                                 ) {
@@ -873,17 +825,6 @@ fun Workspace(
                             }
                             }
                         }
-                    val dw = draggingWidget
-                    val wt = widgetTargetCell
-                    if (dw != null && wt != null && page == pagerState.currentPage) {
-                        Box(
-                            modifier = Modifier
-                                .offset { IntOffset((wt.x * cellW).roundToInt(), (wt.y * cellH).roundToInt()) }
-                                .size(with(density) { (dw.spanX * cellW).toDp() }, with(density) { (dw.spanY * cellH).toDp() })
-                                .padding(4.dp)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
-                        )
-                    }
                     val ew = editingWidget
                     if (ew != null && ew.page == page) {
                         val ctxE = LocalContext.current
@@ -899,6 +840,9 @@ fun Workspace(
                             onSetBounds = { x, y, sx, sy -> scope.launch { onSetWidgetBounds(ew.rowId, ew.page, x, y, sx, sy) } },
                             onReconfigure = { onReconfigureWidget(ew.appWidgetId); editingWidget = null },
                             onExit = { editingWidget = null },
+                            onRemove = { onRemoveWidget(ew); editingWidget = null },
+                            onMove = { x, y, spanX, spanY -> scope.launch { onSetWidgetBounds(ew.rowId, ew.page, x, y, spanX, spanY) } },
+                            dragController = dragController,
                         )
                     }
                 }
@@ -953,9 +897,10 @@ fun Workspace(
 }
 
 /** Launcher3-style widget edit frame: a touch-consuming scrim (so the resize gesture can't leak into
- *  the drawer swipe-up or page scroll), a border, edge handles on the resizable axes (each edge moves,
- *  opposite edge fixed, 0.66-cell hysteresis snap, clamped to provider min/max + grid + a free-rect
- *  check, committed on release), and a gear (reconfigure) button. Body-drag move/remove is added later. */
+ *  the drawer swipe-up or page scroll), a body-drag layer (move within the page, or drop on the top
+ *  Remove pill to delete), a border, edge handles on the resizable axes (each edge moves, opposite edge
+ *  fixed, 0.66-cell hysteresis snap, clamped to provider min/max + grid + a free-rect check, committed
+ *  on release), and a gear (reconfigure) button. */
 @Composable
 private fun WidgetEditOverlay(
     widget: PlacedWidget,
@@ -970,6 +915,9 @@ private fun WidgetEditOverlay(
     onSetBounds: (x: Int, y: Int, spanX: Int, spanY: Int) -> Unit,
     onReconfigure: () -> Unit,
     onExit: () -> Unit,
+    dragController: HomeDragController,
+    onRemove: () -> Unit,
+    onMove: (x: Int, y: Int, spanX: Int, spanY: Int) -> Unit,
 ) {
     var cx by remember(widget.rowId) { mutableStateOf(widget.cellX) }
     var cy by remember(widget.rowId) { mutableStateOf(widget.cellY) }
@@ -981,6 +929,56 @@ private fun WidgetEditOverlay(
     // Scrim: consumes a tap (exit) and, by being the topmost interactive layer, keeps the resize-handle
     // drags from ever reaching the root swipe-up detector or the pager.
     Box(Modifier.fillMaxSize().pointerInput(widget.rowId) { detectTapGestures { onExit() } })
+
+    // Body drag: a drag that starts on the widget body (not a handle/gear, which sit on top and consume
+    // first) moves the widget; dropping over the top Remove pill deletes it.
+    var dragTopLeft by remember(widget.rowId) { mutableStateOf(Offset(cx * cellW, cy * cellH)) }
+    var dragging by remember(widget.rowId) { mutableStateOf(false) }
+    var targetCell by remember(widget.rowId) { mutableStateOf<IntOffset?>(IntOffset(cx, cy)) }
+    Box(
+        modifier = Modifier
+            .offset { IntOffset((cx * cellW).roundToInt(), (cy * cellH).roundToInt()) }
+            .size(with(density) { (sx * cellW).toDp() }, with(density) { (sy * cellH).toDp() })
+            .pointerInput(widget.rowId, cellW, cellH, columns, rows) {
+                detectDragGestures(
+                    onDragStart = {
+                        dragging = true
+                        dragTopLeft = Offset(cx * cellW, cy * cellH)
+                        dragController.localDragging = true
+                    },
+                    onDragEnd = {
+                        dragging = false
+                        dragController.localDragging = false
+                        val rootPos = dragController.gridBounds.topLeft + dragTopLeft
+                        if (dragController.isOverRemove(rootPos)) {
+                            onRemove()
+                        } else {
+                            val t = targetCell
+                            if (t != null && (t.x != cx || t.y != cy)) { onMove(t.x, t.y, sx, sy); cx = t.x; cy = t.y }
+                        }
+                    },
+                    onDragCancel = { dragging = false; dragController.localDragging = false },
+                ) { ch, d ->
+                    ch.consume()
+                    dragTopLeft += d
+                    dragController.update(dragController.gridBounds.topLeft + dragTopLeft)
+                    val tx = (dragTopLeft.x / cellW).roundToInt().coerceIn(0, (columns - sx).coerceAtLeast(0))
+                    val ty = (dragTopLeft.y / cellH).roundToInt().coerceIn(0, (rows - sy).coerceAtLeast(0))
+                    targetCell = if (rectFree(tx, ty, sx, sy)) IntOffset(tx, ty) else null
+                }
+            },
+    )
+    // Live move feedback: a highlighted placeholder at the target cell while body-dragging.
+    val tgt = targetCell
+    if (dragging && tgt != null) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset((tgt.x * cellW).roundToInt(), (tgt.y * cellH).roundToInt()) }
+                .size(with(density) { (sx * cellW).toDp() }, with(density) { (sy * cellH).toDp() })
+                .padding(4.dp)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f), RoundedCornerShape(12.dp)),
+        )
+    }
 
     // Candidate-rect border.
     Box(
