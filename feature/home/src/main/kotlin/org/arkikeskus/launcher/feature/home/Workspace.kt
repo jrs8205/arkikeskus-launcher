@@ -129,6 +129,9 @@ fun Workspace(
     var dragPos by remember { mutableStateOf(Offset.Zero) }
     var dragDistance by remember { mutableStateOf(0f) }
     var editingWidget by remember { mutableStateOf<PlacedWidget?>(null) }
+    // While the edit frame is open, the root swipe-up detector must yield (it bails on localGestureActive),
+    // so a handle/scrim drag can never open the drawer. Reset when the frame closes.
+    LaunchedEffect(editingWidget) { dragController.localGestureActive = editingWidget != null }
     var draggingWidget by remember { mutableStateOf<PlacedWidget?>(null) }
     var widgetDragTopLeft by remember { mutableStateOf(Offset.Zero) }       // px, the widget's top-left while dragging
     var widgetTargetCell by remember { mutableStateOf<IntOffset?>(null) }   // grid cell of the drag target (null = no fit)
@@ -371,7 +374,7 @@ fun Workspace(
         Column(modifier = Modifier.fillMaxSize()) {
             HorizontalPager(
                 state = pagerState,
-                userScrollEnabled = dragging == null && draggingLocal == null,
+                userScrollEnabled = dragging == null && draggingLocal == null && editingWidget == null,
                 // While dragging, keep every page composed so flipping to another page can't
                 // dispose the dragged item's node (which would cancel the in-progress drag).
                 beyondViewportPageCount = if (dragging != null || draggingLocal != null) pageCount.coerceAtLeast(0) else 0,
@@ -998,7 +1001,7 @@ private fun WidgetEditOverlay(
             .size(with(density) { handlePx.toDp() })
             .background(primary, CircleShape)
             .pointerInput(widget.rowId) {
-                detectDragGestures(onDragEnd = { onSetBounds(cx, cy, sx, sy) }) { ch, d -> ch.consume(); onDrag(d) }
+                detectDragGestures(onDragEnd = { accX = 0f; accY = 0f; onSetBounds(cx, cy, sx, sy) }) { ch, d -> ch.consume(); onDrag(d) }
             }
         if (range.horizontal) {
             Box(hMod(right, (top + bottom) / 2f) { d ->
@@ -1051,7 +1054,7 @@ private fun WidgetEditOverlay(
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_home_settings),
-                contentDescription = stringResource(R.string.widget_resize),
+                contentDescription = stringResource(R.string.widget_reconfigure),
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(with(density) { (handlePx * 0.6f).toDp() }),
             )
