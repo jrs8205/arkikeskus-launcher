@@ -841,7 +841,12 @@ fun Workspace(
                             onReconfigure = { onReconfigureWidget(ew.appWidgetId); editingWidget = null },
                             onExit = { editingWidget = null },
                             onRemove = { onRemoveWidget(ew); editingWidget = null },
-                            onMove = { x, y, spanX, spanY -> scope.launch { onSetWidgetBounds(ew.rowId, ew.page, x, y, spanX, spanY) } },
+                            onMove = { x, y, spanX, spanY ->
+                                        widgetOptimistic = ew.rowId to Triple(ew.page, x, y)
+                                        scope.launch {
+                                            if (!onSetWidgetBounds(ew.rowId, ew.page, x, y, spanX, spanY)) widgetOptimistic = null
+                                        }
+                                    },
                             dragController = dragController,
                         )
                     }
