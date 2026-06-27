@@ -112,4 +112,16 @@ class SettingsRepositoryTest {
         repo.setDesktopLocked(false)
         assertThat(repo.settings.first().desktopLocked).isFalse()
     }
+
+    @Test
+    fun `showFrequentApps defaults to false and round-trips`() = runTest {
+        val repo = newRepository()
+        assertThat(repo.settings.first().showFrequentApps).isFalse()
+
+        repo.setShowFrequentApps(true)
+        assertThat(repo.settings.first().showFrequentApps).isTrue()
+
+        repo.setShowFrequentApps(false)
+        assertThat(repo.settings.first().showFrequentApps).isFalse()
+    }
 }

@@ -51,6 +51,7 @@ class SettingsRepository @Inject constructor(
             searchContacts = p[Keys.SEARCH_CONTACTS] ?: false,
             leftSwipeAppKey = p[Keys.LEFT_SWIPE_APP_KEY] ?: "",
             desktopLocked = p[Keys.DESKTOP_LOCKED] ?: false,
+            showFrequentApps = p[Keys.SHOW_FREQUENT_APPS] ?: false,
         )
     }
 
@@ -159,6 +160,9 @@ class SettingsRepository @Inject constructor(
     /** Locks/unlocks the desktop layout (blocks moving/removing/adding home + dock items). */
     suspend fun setDesktopLocked(value: Boolean) = edit { it[Keys.DESKTOP_LOCKED] = value }
 
+    /** Toggles the "most used" row in the app drawer. */
+    suspend fun setShowFrequentApps(value: Boolean) = edit { it[Keys.SHOW_FREQUENT_APPS] = value }
+
     suspend fun addToDock(key: String) = edit { p ->
         val current = currentFavorites(p).toMutableList()
         if (key !in current) current.add(key)
@@ -225,6 +229,7 @@ class SettingsRepository @Inject constructor(
         val SEARCH_CONTACTS = booleanPreferencesKey("search_contacts")
         val LEFT_SWIPE_APP_KEY = stringPreferencesKey("left_swipe_app_key")
         val DESKTOP_LOCKED = booleanPreferencesKey("desktop_locked")
+        val SHOW_FREQUENT_APPS = booleanPreferencesKey("show_frequent_apps")
     }
 
     companion object {

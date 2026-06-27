@@ -27,4 +27,6 @@ data class LauncherSettings(
     val leftSwipeAppKey: String = "",
     /** Lock the desktop layout: when true, home + dock items can't be moved, removed, or added. */
     val desktopLocked: Boolean = false,
+    /** Show a "most used" row (top apps by decayed launch frequency) above the drawer's app list. */
+    val showFrequentApps: Boolean = false,
 )
