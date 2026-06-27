@@ -56,10 +56,13 @@ class HomeLayoutRepository @Inject constructor(
                 moveOrSwap(existing, page, cellX, cellY)
                 return@withTransaction true
             }
-            val (p, x, y) = if (dao.getAt(HOME, page, cellX, cellY) == null) {
+            val items = dao.getContainer(HOME)
+            val (p, x, y) = if (dao.getAt(HOME, page, cellX, cellY) == null &&
+                !cellInWidget(items, -1L, page, cellX, cellY)
+            ) {
                 Triple(page, cellX, cellY)
             } else {
-                firstFreeCell(dao.getContainer(HOME), columns)
+                firstFreeCell(items, columns)
             }
             dao.insert(homeApp(appItem, HOME, p, x, y))
             true
@@ -213,6 +216,8 @@ class HomeLayoutRepository @Inject constructor(
      */
     private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int) {
         if (source.page == page && source.cellX == cellX && source.cellY == cellY) return
+        // Widgets occupy a rectangle and aren't swappable in MVP: cancel a drop onto/into one.
+        if (cellInWidget(dao.getContainer(HOME), source.id, page, cellX, cellY)) return
         val occupant = dao.getAt(HOME, page, cellX, cellY)
         when {
             occupant == null -> dao.moveById(source.id, HOME, page, cellX, cellY)
@@ -236,22 +241,16 @@ class HomeLayoutRepository @Inject constructor(
             cellY = cellY,
         )
 
-    private fun firstFreeCell(items: List<HomeItemEntity>, columns: Int): Triple<Int, Int, Int> {
-        // Guard against columns <= 0: the inner loop would never run and `page` would increment
-        // forever. SettingsRepository already clamps the value; this is defense in depth so no caller
-        // can hang the layout math.
-        val cols = columns.coerceAtLeast(1)
-        val occupied = items.map { Triple(it.page, it.cellX, it.cellY) }.toHashSet()
-        var page = 0
-        while (true) {
-            for (y in 0 until ROWS) {
-                for (x in 0 until cols) {
-                    if (Triple(page, x, y) !in occupied) return Triple(page, x, y)
-                }
-            }
-            page++
+    /** True if (page,cellX,cellY) lies within any widget's rectangle in [items] (excluding [excludeId]). */
+    private fun cellInWidget(items: List<HomeItemEntity>, excludeId: Long, page: Int, cellX: Int, cellY: Int): Boolean =
+        items.any {
+            it.id != excludeId && it.isWidget && it.page == page &&
+                cellX in it.cellX until (it.cellX + it.spanX) &&
+                cellY in it.cellY until (it.cellY + it.spanY)
         }
-    }
+
+    private fun firstFreeCell(items: List<HomeItemEntity>, columns: Int): Triple<Int, Int, Int> =
+        firstFreeRect(items, columns, 1, 1)
 
     /** Places a bound widget at the first free [spanX]×[spanY] rectangle on the home grid. */
     suspend fun addWidget(appWidgetId: Int, provider: String, spanX: Int, spanY: Int, columns: Int) {

@@ -145,6 +145,7 @@ fun Workspace(
     val placedApps = remember(entries) { entries.filterIsInstance<PlacedApp>() }
     val folders = remember(entries) { entries.filterIsInstance<PlacedFolder>() }
     val placedShortcuts = remember(entries) { entries.filterIsInstance<PlacedShortcut>() }
+    val placedWidgets = remember(entries) { entries.filterIsInstance<PlacedWidget>() }
 
     // Optimistic placements (key -> page/cellX/cellY) applied on top of [placedApps] until the
     // database flow catches up, so an icon doesn't flash at its old cell for a frame on drop.
@@ -194,8 +195,8 @@ fun Workspace(
         }
     }
     // Apps + folders + pinned shortcuts together — what's actually on the grid (rendering + occupants).
-    val effectiveEntries: List<HomeEntry> = remember(effectiveApps, effectiveFolders, effectiveShortcuts) {
-        effectiveApps + effectiveFolders + effectiveShortcuts
+    val effectiveEntries: List<HomeEntry> = remember(effectiveApps, effectiveFolders, effectiveShortcuts, placedWidgets) {
+        effectiveApps + effectiveFolders + effectiveShortcuts + placedWidgets
     }
     // The drag gesture's pointerInput block outlives recomposition (its keys don't include the entry
     // list), so it must read the *latest* placements through this state, not a stale closure capture.
@@ -757,6 +758,11 @@ fun Workspace(
                                     if (info != null && host != null) {
                                         AndroidView(
                                             factory = { c -> host.createView(c.applicationContext, widget.appWidgetId, info) },
+                                            update = { hostView ->
+                                                val wDp = (widget.spanX * cellW / density.density).toInt()
+                                                val hDp = (widget.spanY * cellH / density.density).toInt()
+                                                runCatching { hostView.updateAppWidgetSize(android.os.Bundle.EMPTY, wDp, hDp, wDp, hDp) }
+                                            },
                                             modifier = Modifier.fillMaxSize(),
                                         )
                                     } else {
