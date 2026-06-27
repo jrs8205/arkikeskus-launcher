@@ -140,6 +140,7 @@ fun AppDrawerScreen(
     ExpressiveTheme {
     AppDrawerContent(
         apps = uiState.apps,
+        frequentApps = uiState.frequentApps,
         folders = uiState.folders,
         query = uiState.query,
         columns = uiState.columns,
@@ -258,6 +259,7 @@ fun AppDrawerScreen(
 @Composable
 private fun AppDrawerContent(
     apps: List<AppItem>,
+    frequentApps: List<AppItem>,
     folders: List<DrawerFolderUi>,
     query: String,
     columns: Int,
@@ -378,6 +380,13 @@ private fun AppDrawerContent(
                     .padding(horizontal = 12.dp),
             ) {
                 if (!searching) {
+                    if (frequentApps.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }, contentType = { "header" }) {
+                            ExpressiveSectionTitle(stringResource(R.string.drawer_frequent_apps))
+                        }
+                        appCells(frequentApps, badges, badgeShowCount, badgeScale, showLabels, onAppClick, onAppLongClick,
+                            dragController, onDragOutStart, onDropOnHome, onDropOnDock, haptics, locked, keyPrefix = "freq-")
+                    }
                     items(items = folders, key = { "folder-${it.id}" }, contentType = { "folder" }) { folder ->
                         DrawerFolderTile(folder = folder, showLabel = showLabels, onClick = { onFolderClick(folder) })
                     }
@@ -658,8 +667,9 @@ private fun LazyGridScope.appCells(
     onDropOnDock: (AppItem) -> Unit,
     haptics: androidx.compose.ui.hapticfeedback.HapticFeedback,
     locked: Boolean,
+    keyPrefix: String = "",
 ) {
-    items(items = apps, key = { it.key }, contentType = { "app" }) { app ->
+    items(items = apps, key = { keyPrefix + it.key }, contentType = { "app" }) { app ->
         var bounds by remember { mutableStateOf(Rect.Zero) }
         AppIcon(
             appItem = app,
