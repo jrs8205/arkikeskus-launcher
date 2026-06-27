@@ -48,6 +48,8 @@ data class AppDrawerUiState(
     val settingResults: List<SearchResult.Setting> = emptyList(),
     val contactResults: List<SearchResult.Contact> = emptyList(),
     val desktopLocked: Boolean = false,
+    val showFrequentApps: Boolean = false,
+    val frequentApps: List<AppItem> = emptyList(),
 )
 
 @HiltViewModel
@@ -57,6 +59,7 @@ class AppDrawerViewModel @Inject constructor(
     private val homeLayoutRepository: HomeLayoutRepository,
     notificationBadgeRepository: NotificationBadgeRepository,
     private val searchAggregator: SearchAggregator,
+    private val appUsageRepository: org.arkikeskus.launcher.data.AppUsageRepository,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -90,6 +93,7 @@ class AppDrawerViewModel @Inject constructor(
             notificationDotScale = settings.notificationDotScale,
             useThemedIcons = settings.useThemedIcons,
             desktopLocked = settings.desktopLocked,
+            showFrequentApps = settings.showFrequentApps,
         )
     }.combine(notificationBadgeRepository.badges) { state, badges ->
         state.copy(badges = badges)
@@ -117,6 +121,25 @@ class AppDrawerViewModel @Inject constructor(
                 settingResults = results.settings,
                 contactResults = results.contacts,
             )
+        }
+    }.combine(appUsageRepository.usage) { state, usage ->
+        // Only the idle drawer gets a "most used" row; search keeps its own relevance order.
+        if (!state.showFrequentApps || state.query.isNotBlank()) {
+            state
+        } else {
+            val now = System.currentTimeMillis()
+            val ranked = state.apps
+                .mapNotNull { app ->
+                    usage[app.key]?.let { app to org.arkikeskus.launcher.data.AppUsageRepository.currentScore(it, now) }
+                }
+                .filter { it.second > 0f }
+                .sortedWith(
+                    compareByDescending<Pair<AppItem, Float>> { it.second }
+                        .thenBy { it.first.label.lowercase() },
+                )
+                .take(state.columns) // one row = drawerColumns; reacts to the icon-count setting
+                .map { it.first }
+            state.copy(frequentApps = ranked)
         }
     }.stateIn(
         scope = viewModelScope,
