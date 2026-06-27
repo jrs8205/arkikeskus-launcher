@@ -14,6 +14,9 @@ import dagger.hilt.components.SingletonComponent
 import org.arkikeskus.launcher.data.AppIconFetcher
 import org.arkikeskus.launcher.data.AppIconKeyer
 import org.arkikeskus.launcher.data.LauncherAppsSource
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.arkikeskus.launcher.data.local.HomeItemDao
 import org.arkikeskus.launcher.data.local.LauncherDatabase
 import javax.inject.Singleton
@@ -28,6 +31,12 @@ object DataModule {
     @Singleton
     fun provideSettingsDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
         context.settingsDataStore
+
+    @Provides
+    @Singleton
+    @ApplicationScope
+    fun provideApplicationScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Provides
     @Singleton

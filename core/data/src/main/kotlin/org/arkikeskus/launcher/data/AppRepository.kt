@@ -1,7 +1,10 @@
 package org.arkikeskus.launcher.data
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import org.arkikeskus.launcher.data.di.ApplicationScope
 import org.arkikeskus.launcher.model.AppItem
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -10,6 +13,8 @@ import javax.inject.Singleton
 class AppRepository @Inject constructor(
     private val source: LauncherAppsSource,
     private val settingsRepository: SettingsRepository,
+    private val appUsageRepository: AppUsageRepository,
+    @ApplicationScope private val scope: CoroutineScope,
 ) {
     /**
      * All launchable apps, sorted by (effective) label, updating on install/remove/change. Any
@@ -26,5 +31,10 @@ class AppRepository @Inject constructor(
         }
     }
 
-    fun launch(appItem: AppItem): Result<Unit> = source.launch(appItem)
+    /** Launches [appItem]; on success, records the launch for the "most used" ranking (fire-and-forget). */
+    fun launch(appItem: AppItem): Result<Unit> {
+        val result = source.launch(appItem)
+        if (result.isSuccess) scope.launch { appUsageRepository.recordLaunch(appItem.key) }
+        return result
+    }
 }
