@@ -1,5 +1,9 @@
 package org.arkikeskus.launcher.feature.updater
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +28,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun UpdateSection(modifier: Modifier = Modifier, viewModel: UpdateViewModel = hiltViewModel()) {
     val s by viewModel.state.collectAsStateWithLifecycle()
+    // Request POST_NOTIFICATIONS (API 33+) when the user enables auto-update. If denied the
+    // feature still works (in-app card); only the background push is skipped.
+    val notifPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* result intentionally ignored — push is optional */ }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.update_section), style = MaterialTheme.typography.titleMedium)
         Text(
@@ -53,7 +62,15 @@ fun UpdateSection(modifier: Modifier = Modifier, viewModel: UpdateViewModel = hi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(stringResource(R.string.update_auto_toggle))
-                Switch(checked = s.autoEnabled, onCheckedChange = { viewModel.setAutoUpdate(it) })
+                Switch(
+                    checked = s.autoEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        viewModel.setAutoUpdate(checked)
+                    },
+                )
             }
             OutlinedButton(
                 onClick = { viewModel.checkNow() },
