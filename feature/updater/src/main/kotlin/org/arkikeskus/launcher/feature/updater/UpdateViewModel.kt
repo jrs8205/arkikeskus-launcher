@@ -67,8 +67,8 @@ class UpdateViewModel @Inject constructor(
 
     fun installUpdate(info: UpdateInfo) = viewModelScope.launch {
         runCatching { installer.downloadAndInstall(info) }
-            .onFailure {
-                if (it is kotlinx.coroutines.CancellationException) throw it
+            .onFailure { exc ->
+                if (exc is kotlinx.coroutines.CancellationException) throw exc
                 _state.update { it.copy(error = true) }
             }
     }
