@@ -166,7 +166,7 @@ class BackupViewModel @Inject constructor(
             _driveState.update { s ->
                 s.copy(isLoading = false, lastBackupMs = uploadedAt ?: s.lastBackupMs)
             }
-            _events.emit(BackupEvent.DriveUploaded)
+            if (uploadedAt != null) _events.emit(BackupEvent.DriveUploaded)
         }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
             _driveState.update { it.copy(isLoading = false) }

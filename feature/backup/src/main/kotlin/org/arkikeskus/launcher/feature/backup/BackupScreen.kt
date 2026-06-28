@@ -144,11 +144,13 @@ fun BackupScreen(
             }
             if (result.hasResolution()) {
                 pendingDriveAction = action
+                val sender = result.pendingIntent?.intentSender
+                if (sender == null) { viewModel.emitAuthFailed(); return@launch }
                 driveResolver.launch(
-                    IntentSenderRequest.Builder(result.pendingIntent!!.intentSender).build(),
+                    IntentSenderRequest.Builder(sender).build(),
                 )
             } else {
-                val token = result.accessToken!!
+                val token = result.accessToken ?: run { viewModel.emitAuthFailed(); return@launch }
                 cachedToken = token
                 dispatchDriveAction(action, token)
             }
