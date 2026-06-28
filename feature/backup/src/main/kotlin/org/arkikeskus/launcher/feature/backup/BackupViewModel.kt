@@ -140,6 +140,8 @@ class BackupViewModel @Inject constructor(
     fun setDriveEnabled(enabled: Boolean) = viewModelScope.launch {
         settings.setDriveEnabled(enabled)
         // _driveState.enabled will auto-update via the settings.driveEnabled collector in init.
+        if (enabled) BackupScheduler.scheduleDaily(context)
+        else BackupScheduler.cancel(context)
     }
 
     /**
