@@ -446,7 +446,10 @@ fun Workspace(
                                 }
                                 // Fired only on a still empty-area hold. If an icon picked up
                                 // (dragging != null) the hold belonged to that icon, not settings.
-                                if (held == null && !resolved && dragging == null) {
+                                // Also suppressed while a widget is in edit mode (editingWidget != null):
+                                // a still dwell on the widget during a move/remove drag must not also
+                                // open the home-options menu underneath the edit scrim.
+                                if (held == null && !resolved && dragging == null && editingWidget == null) {
                                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                     // Anchor the options popup at the press point (root coords); flip it
                                     // above when the press is in the lower half of the screen.
@@ -946,6 +949,11 @@ private fun WidgetEditOverlay(
     // Body drag: a drag that starts on the widget body (not a handle/gear, which sit on top and consume
     // first) moves the widget; dropping over the top Remove pill deletes it.
     var dragTopLeft by remember(widget.rowId) { mutableStateOf(Offset(cx * cellW, cy * cellH)) }
+    // Finger offset within the widget at grab time. The Remove hit-test (and the remove-zone highlight)
+    // must track the FINGER, not the widget's top-left: a tall widget grabbed mid-body would otherwise
+    // never reach the top Remove pill (its top-left stays below it), so it could never be removed — it
+    // just slid under the pill. Mirrors the app drag path (which adds down.position to the cell origin).
+    var grabOffset by remember(widget.rowId) { mutableStateOf(Offset.Zero) }
     var dragging by remember(widget.rowId) { mutableStateOf(false) }
     var targetCell by remember(widget.rowId) { mutableStateOf<IntOffset?>(IntOffset(cx, cy)) }
     Box(
@@ -954,15 +962,16 @@ private fun WidgetEditOverlay(
             .size(with(density) { (sx * cellW).toDp() }, with(density) { (sy * cellH).toDp() })
             .pointerInput(widget.rowId, cellW, cellH, columns, rows) {
                 detectDragGestures(
-                    onDragStart = {
+                    onDragStart = { start ->
                         dragging = true
                         dragTopLeft = Offset(cx * cellW, cy * cellH)
+                        grabOffset = start
                         dragController.localDragging = true
                     },
                     onDragEnd = {
                         dragging = false
                         dragController.localDragging = false
-                        val rootPos = dragController.gridBounds.topLeft + dragTopLeft
+                        val rootPos = dragController.gridBounds.topLeft + dragTopLeft + grabOffset
                         if (dragController.isOverRemove(rootPos)) {
                             onRemove()
                         } else {
@@ -974,7 +983,7 @@ private fun WidgetEditOverlay(
                 ) { ch, d ->
                     ch.consume()
                     dragTopLeft += d
-                    dragController.update(dragController.gridBounds.topLeft + dragTopLeft)
+                    dragController.update(dragController.gridBounds.topLeft + dragTopLeft + grabOffset)
                     val tx = (dragTopLeft.x / cellW).roundToInt().coerceIn(0, (columns - sx).coerceAtLeast(0))
                     val ty = (dragTopLeft.y / cellH).roundToInt().coerceIn(0, (rows - sy).coerceAtLeast(0))
                     targetCell = if (rectFree(tx, ty, sx, sy)) IntOffset(tx, ty) else null
