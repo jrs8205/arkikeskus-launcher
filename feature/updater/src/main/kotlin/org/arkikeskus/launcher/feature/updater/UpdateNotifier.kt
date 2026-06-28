@@ -17,10 +17,15 @@ object UpdateNotifier {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL, context.getString(R.string.update_notification_channel_name), NotificationManager.IMPORTANCE_DEFAULT),
         )
-        // Tapping opens the launcher (which hosts the updater section in Settings).
-        val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        // Tapping opens SettingsActivity (which hosts the updater section).
+        // Use setClassName so feature:updater doesn't need a compile dep on :app.
+        // context.packageName may have a .debug suffix; the class name is always bare.
+        val launch = Intent().apply {
+            setClassName(context.packageName, "org.arkikeskus.launcher.SettingsActivity")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
         val pi = PendingIntent.getActivity(
-            context, 0, launch ?: Intent(),
+            context, 0, launch,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notif = NotificationCompat.Builder(context, CHANNEL)

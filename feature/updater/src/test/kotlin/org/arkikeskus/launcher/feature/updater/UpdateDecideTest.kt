@@ -9,7 +9,7 @@ class UpdateDecideTest {
 
     @Test fun newer_release_returns_info() {
         val info = repo.decide("0.3.0", rel)!!
-        assertThat(info.versionName).isEqualTo("v0.4.0")
+        assertThat(info.versionName).isEqualTo("0.4.0")
         assertThat(info.apkUrl).isEqualTo("https://x/app.apk")
         assertThat(info.notes).isEqualTo("- notes")
     }
