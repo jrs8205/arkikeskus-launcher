@@ -70,6 +70,7 @@ fun BackupScreen(
 
     // --- File-import state ---
     var pendingImport by remember { mutableStateOf<android.net.Uri?>(null) }
+    val localLastBackupMs by viewModel.localLastBackupMs.collectAsStateWithLifecycle()
 
     // --- Drive state ---
     val driveState by viewModel.driveState.collectAsStateWithLifecycle()
@@ -170,6 +171,7 @@ fun BackupScreen(
 
     // --- Event handler ---
     val restoredMsg = stringResource(R.string.backup_restored)
+    val restoredSkippedMsg = stringResource(R.string.backup_restored_skipped)
     val invalidMsg = stringResource(R.string.backup_import_invalid)
     val failedMsg = stringResource(R.string.backup_failed)
     val exportedMsg = stringResource(R.string.backup_exported)
@@ -183,9 +185,10 @@ fun BackupScreen(
             snackbar.showMessage(
                 when (e) {
                     is BackupEvent.Exported -> exportedMsg
-                    is BackupEvent.Restored -> String.format(restoredMsg, e.restored, e.skipped)
+                    is BackupEvent.Restored ->
+                        if (e.skipped > 0) String.format(restoredSkippedMsg, e.skipped) else restoredMsg
                     BackupEvent.InvalidFile -> invalidMsg
-                    is BackupEvent.Failed -> failedMsg
+                    is BackupEvent.Failed -> if (e.message.isBlank()) failedMsg else "$failedMsg: ${e.message}"
                     BackupEvent.DriveUploaded -> exportedMsg
                     BackupEvent.AuthFailed -> authFailedMsg
                 },
@@ -214,6 +217,16 @@ fun BackupScreen(
                 onClick = { openDoc.launch(arrayOf("application/json")) },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.backup_import)) }
+            if (localLastBackupMs > 0L) {
+                val formatted = java.text.DateFormat.getDateTimeInstance(
+                    java.text.DateFormat.SHORT,
+                    java.text.DateFormat.SHORT,
+                ).format(java.util.Date(localLastBackupMs))
+                Text(
+                    stringResource(R.string.backup_last_time, formatted),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             // --- Drive section ---
             Text(stringResource(R.string.backup_drive_section), style = MaterialTheme.typography.titleMedium)

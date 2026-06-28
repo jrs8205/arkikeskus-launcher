@@ -6,7 +6,8 @@
     <string name="backup_import">Import from file</string>
     <string name="backup_default_name">arkikeskus-launcher-backup</string>
     <string name="backup_exported">Backup saved</string>
-    <string name="backup_restored">Restored %1$d items (%2$d skipped)</string>
+    <string name="backup_restored">Backup restored</string>
+    <string name="backup_restored_skipped">Backup restored — %1$d skipped (not installed)</string>
     <string name="backup_import_invalid">Invalid or incompatible backup file</string>
     <string name="backup_failed">Operation failed</string>
     <string name="backup_restore_confirm_title">Restore backup?</string>

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Process
 import android.os.UserManager
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -60,6 +61,10 @@ class BackupViewModel @Inject constructor(
     private val _driveState = MutableStateFlow(DriveState())
     val driveState: StateFlow<DriveState> = _driveState.asStateFlow()
 
+    /** Epoch-ms timestamp of the last successful local file export (0 = never), for the file card. */
+    private val _localLastBackupMs = MutableStateFlow(0L)
+    val localLastBackupMs: StateFlow<Long> = _localLastBackupMs.asStateFlow()
+
     /** OkHttpClient shared across Drive calls; explicit timeouts prevent network stalls. */
     private val driveHttp: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -79,6 +84,9 @@ class BackupViewModel @Inject constructor(
                 _driveState.update { it.copy(lastBackupMs = time) }
             }
         }
+        viewModelScope.launch {
+            settings.localLastBackupTime.collect { time -> _localLastBackupMs.value = time }
+        }
     }
 
     private val appVersion: String
@@ -91,9 +99,13 @@ class BackupViewModel @Inject constructor(
             val doc = backupRepository.exportDocument(createdAt = System.currentTimeMillis(), appVersion = appVersion)
             context.contentResolver.openOutputStream(uri)?.use { it.write(BackupCodec.encode(doc).toByteArray()) }
                 ?: error("Could not open output stream")
-        }.onSuccess { _events.emit(BackupEvent.Exported(uri.lastPathSegment ?: "")) }
+        }.onSuccess {
+            settings.setLocalLastBackup(System.currentTimeMillis())
+            _events.emit(BackupEvent.Exported(uri.lastPathSegment ?: ""))
+        }
             .onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
+                Log.w(TAG, "File export failed", it)
                 _events.emit(BackupEvent.Failed(it.message ?: "export failed"))
             }
     }
@@ -171,6 +183,7 @@ class BackupViewModel @Inject constructor(
             if (uploadedAt != null) _events.emit(BackupEvent.DriveUploaded)
         }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
+            Log.w(TAG, "Drive backup failed", it)
             _driveState.update { it.copy(isLoading = false) }
             _events.emit(BackupEvent.Failed(it.message ?: "Drive upload failed"))
         }
@@ -188,6 +201,7 @@ class BackupViewModel @Inject constructor(
             _driveState.update { it.copy(isLoading = false, availableFiles = files) }
         }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
+            Log.w(TAG, "Drive list failed", it)
             _driveState.update { it.copy(isLoading = false) }
             _events.emit(BackupEvent.Failed(it.message ?: "Drive list failed"))
         }
@@ -215,6 +229,7 @@ class BackupViewModel @Inject constructor(
             _events.emit(BackupEvent.Restored(result.restored, result.skipped))
         }.onFailure {
             if (it is kotlinx.coroutines.CancellationException) throw it
+            Log.w(TAG, "Drive restore failed", it)
             _driveState.update { it.copy(isLoading = false) }
             if (it is BackupFormatException || it is JSONException) _events.emit(BackupEvent.InvalidFile)
             else _events.emit(BackupEvent.Failed(it.message ?: "Drive restore failed"))
@@ -227,4 +242,8 @@ class BackupViewModel @Inject constructor(
     private fun mainUserSerial(): Long = runCatching {
         context.getSystemService(UserManager::class.java).getSerialNumberForUser(Process.myUserHandle())
     }.getOrDefault(0L)
+
+    private companion object {
+        const val TAG = "BackupVM"
+    }
 }

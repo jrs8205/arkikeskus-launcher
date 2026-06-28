@@ -219,6 +219,11 @@ class SettingsRepository @Inject constructor(
     /** One-shot read for use in background workers (Task 7). */
     suspend fun driveEnabledOnce(): Boolean = dataStore.data.first()[Keys.DRIVE_ENABLED] ?: false
 
+    /** Timestamp (epoch ms) of the last successful local file export; 0 if never. */
+    val localLastBackupTime: Flow<Long> = dataStore.data.map { it[Keys.LOCAL_LAST_BACKUP] ?: 0L }
+
+    suspend fun setLocalLastBackup(timeMs: Long) = edit { it[Keys.LOCAL_LAST_BACKUP] = timeMs }
+
     /**
      * Snapshot of every persisted preference (name -> value) for backup.
      * Drive bookkeeping keys are excluded so a restore never reimports another device's Drive state.
@@ -242,6 +247,7 @@ class SettingsRepository @Inject constructor(
             val driveEnabled = prefs[Keys.DRIVE_ENABLED]
             val driveLastTime = prefs[Keys.DRIVE_LAST_TIME]
             val driveLastHash = prefs[Keys.DRIVE_LAST_HASH]
+            val localLastBackup = prefs[Keys.LOCAL_LAST_BACKUP]
             prefs.clear()
             for ((name, value) in values) {
                 when {
@@ -256,6 +262,7 @@ class SettingsRepository @Inject constructor(
             if (driveEnabled != null) prefs[Keys.DRIVE_ENABLED] = driveEnabled
             if (driveLastTime != null) prefs[Keys.DRIVE_LAST_TIME] = driveLastTime
             if (driveLastHash != null) prefs[Keys.DRIVE_LAST_HASH] = driveLastHash
+            if (localLastBackup != null) prefs[Keys.LOCAL_LAST_BACKUP] = localLastBackup
         }
     }
 
@@ -291,6 +298,7 @@ class SettingsRepository @Inject constructor(
         val DRIVE_ENABLED = booleanPreferencesKey("drive_backup_enabled")
         val DRIVE_LAST_TIME = longPreferencesKey("drive_last_backup_time")
         val DRIVE_LAST_HASH = stringPreferencesKey("drive_last_backup_hash")
+        val LOCAL_LAST_BACKUP = longPreferencesKey("local_last_backup_time")
     }
 
     companion object {
@@ -306,7 +314,11 @@ class SettingsRepository @Inject constructor(
         val FLOAT_KEYS = setOf("dock_opacity", "notif_dot_scale")
         val INT_KEYS = setOf("dock_columns", "home_columns", "drawer_columns")
 
-        /** Keys that must never appear in an exported backup (device-local Drive bookkeeping). */
-        val DRIVE_INTERNAL_KEYS = setOf("drive_backup_enabled", "drive_last_backup_time", "drive_last_backup_hash")
+        /** Device-local bookkeeping keys excluded from an exported backup and preserved across a
+         *  restore: Drive enable/last-backup/hash + the local file-backup timestamp. */
+        val DRIVE_INTERNAL_KEYS = setOf(
+            "drive_backup_enabled", "drive_last_backup_time", "drive_last_backup_hash",
+            "local_last_backup_time",
+        )
     }
 }

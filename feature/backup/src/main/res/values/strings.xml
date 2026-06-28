@@ -6,7 +6,8 @@
     <string name="backup_import">Tuo tiedostosta</string>
     <string name="backup_default_name">arkikeskus-launcher-backup</string>
     <string name="backup_exported">Varmuuskopio tallennettu</string>
-    <string name="backup_restored">Palautettu: %1$d kohdetta (ohitettu %2$d)</string>
+    <string name="backup_restored">Varmuuskopio palautettu</string>
+    <string name="backup_restored_skipped">Varmuuskopio palautettu — %1$d ohitettu (ei asennettu)</string>
     <string name="backup_import_invalid">Virheellinen tai yhteensopimaton varmuuskopiotiedosto</string>
     <string name="backup_failed">Toiminto epäonnistui</string>
     <string name="backup_restore_confirm_title">Palauta varmuuskopio?</string>

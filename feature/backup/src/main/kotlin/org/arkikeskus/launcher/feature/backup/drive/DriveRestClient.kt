@@ -18,9 +18,9 @@ class DriveRestClient(
     private fun authed(b: Request.Builder) = b.header("Authorization", "Bearer $token")
 
     fun upload(name: String, json: String) {
-        val meta = JSONObject().put("name", name).put("parents", listOf("appDataFolder").let {
-            org.json.JSONArray().apply { put("appDataFolder") }
-        })
+        val meta = JSONObject()
+            .put("name", name)
+            .put("parents", org.json.JSONArray().put("appDataFolder"))
         val body = MultipartBody.Builder().setType("multipart/related".toMediaType())
             .addPart(meta.toString().toRequestBody("application/json; charset=UTF-8".toMediaType()))
             .addPart(json.toRequestBody("application/json".toMediaType()))
@@ -28,7 +28,7 @@ class DriveRestClient(
         val req = authed(Request.Builder()
             .url("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
             .post(body)).build()
-        http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("upload ${it.code}") }
+        http.newCall(req).execute().use { if (!it.isSuccessful) throw it.toError("upload") }
     }
 
     fun list(): List<DriveFile> {
@@ -37,8 +37,8 @@ class DriveRestClient(
                 "&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)",
         )).build()
         http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException("list ${resp.code}")
-            val files = JSONObject(resp.body!!.string()).getJSONArray("files")
+            if (!resp.isSuccessful) throw resp.toError("list")
+            val files = JSONObject(resp.body?.string().orEmpty()).getJSONArray("files")
             return (0 until files.length()).map { i ->
                 val o = files.getJSONObject(i)
                 DriveFile(o.getString("id"), o.getString("name"), o.optString("modifiedTime"))
@@ -50,18 +50,25 @@ class DriveRestClient(
         val req = authed(Request.Builder()
             .url("https://www.googleapis.com/drive/v3/files/$id?alt=media")).build()
         http.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) throw IOException("download ${resp.code}")
-            return resp.body!!.string()
+            if (!resp.isSuccessful) throw resp.toError("download")
+            return resp.body?.string().orEmpty()
         }
     }
 
     fun delete(id: String) {
         val req = authed(Request.Builder()
             .url("https://www.googleapis.com/drive/v3/files/$id").delete()).build()
-        http.newCall(req).execute().use { if (!it.isSuccessful) throw IOException("delete ${it.code}") }
+        http.newCall(req).execute().use { if (!it.isSuccessful) throw it.toError("delete") }
     }
 
     fun pruneToNewest(keep: Int) {
         list().drop(keep).forEach { delete(it.id) }
+    }
+
+    /** Builds an [IOException] including the HTTP status and the API's error body (the body explains
+     *  WHY, e.g. "Google Drive API has not been used in project … or it is disabled"). */
+    private fun okhttp3.Response.toError(op: String): IOException {
+        val detail = runCatching { body?.string() }.getOrNull()?.take(300)?.trim().orEmpty()
+        return IOException("Drive $op HTTP $code${if (detail.isNotEmpty()) ": $detail" else ""}")
     }
 }
