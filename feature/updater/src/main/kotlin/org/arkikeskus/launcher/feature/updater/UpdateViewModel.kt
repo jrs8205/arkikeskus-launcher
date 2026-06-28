@@ -29,6 +29,7 @@ class UpdateViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: UpdateRepository,
     private val settings: SettingsRepository,
+    private val installer: ApkInstaller,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(
@@ -64,8 +65,13 @@ class UpdateViewModel @Inject constructor(
         if (enabled) UpdateScheduler.schedule(context) else UpdateScheduler.cancel(context)
     }
 
-    /** Temporary stub — Task 6 fills in the real install flow. */
-    fun installUpdate(info: UpdateInfo) {}
+    fun installUpdate(info: UpdateInfo) = viewModelScope.launch {
+        runCatching { installer.downloadAndInstall(info) }
+            .onFailure {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                _state.update { it.copy(error = true) }
+            }
+    }
 
     private fun currentVersionName(): String = runCatching {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName
