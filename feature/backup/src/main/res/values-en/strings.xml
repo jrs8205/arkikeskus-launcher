@@ -14,7 +14,7 @@
     <string name="backup_restore_confirm_ok">Restore</string>
     <string name="backup_cancel">Cancel</string>
     <string name="backup_drive_section">Google Drive</string>
-    <string name="backup_drive_enable">Enable Drive backup</string>
+    <string name="backup_no_backups">No backups in Drive</string>
     <string name="backup_now">Back up now</string>
     <string name="backup_restore_drive">Restore from Drive</string>
     <string name="backup_last_time">Last: %1$s</string>

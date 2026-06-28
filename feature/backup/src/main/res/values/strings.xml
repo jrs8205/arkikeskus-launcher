@@ -14,7 +14,7 @@
     <string name="backup_restore_confirm_ok">Palauta</string>
     <string name="backup_cancel">Peruuta</string>
     <string name="backup_drive_section">Google Drive</string>
-    <string name="backup_drive_enable">Ota Drive-varmuuskopio käyttöön</string>
+    <string name="backup_no_backups">Ei varmuuskopioita Drivessä</string>
     <string name="backup_now">Varmuuskopioi nyt</string>
     <string name="backup_restore_drive">Palauta Drivestä</string>
     <string name="backup_last_time">Viimeksi: %1$s</string>

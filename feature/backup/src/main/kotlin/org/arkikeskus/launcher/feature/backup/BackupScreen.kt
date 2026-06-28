@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -271,10 +272,11 @@ fun BackupScreen(
             onDismissRequest = { showDriveFiles = false },
             title = { Text(stringResource(R.string.backup_restore_drive)) },
             text = {
-                if (driveState.availableFiles.isEmpty()) {
-                    Text(stringResource(R.string.backup_drive_section)) // placeholder while loading
-                } else {
-                    LazyColumn {
+                when {
+                    driveState.isLoading -> CircularProgressIndicator()
+                    driveState.availableFiles.isEmpty() ->
+                        Text(stringResource(R.string.backup_no_backups))
+                    else -> LazyColumn {
                         items(driveState.availableFiles) { file ->
                             TextButton(
                                 onClick = { pendingDriveRestore = file; showDriveFiles = false },
