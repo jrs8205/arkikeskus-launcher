@@ -7,8 +7,10 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.arkikeskus.launcher.model.LauncherSettings
 import javax.inject.Inject
@@ -201,6 +203,29 @@ class SettingsRepository @Inject constructor(
     private fun currentFavorites(p: MutablePreferences): List<String> =
         p[Keys.DOCK_FAVORITES]?.split("\n")?.filter { it.isNotEmpty() } ?: emptyList()
 
+    /** Snapshot of every persisted preference (name -> value) for backup. */
+    suspend fun exportRaw(): Map<String, Any> =
+        dataStore.data.first().asMap().entries.associate { (k, v) -> k.name to v }
+
+    /**
+     * Replaces all preferences with [values]. JSON collapses Int/Float into "number", so numeric
+     * values are coerced back by the known-key registry; unknown keys fall back to their JSON type.
+     */
+    suspend fun importRaw(values: Map<String, Any>) {
+        dataStore.edit { prefs ->
+            prefs.clear()
+            for ((name, value) in values) {
+                when {
+                    value is Boolean -> prefs[booleanPreferencesKey(name)] = value
+                    value is String -> prefs[stringPreferencesKey(name)] = value
+                    name in FLOAT_KEYS && value is Number -> prefs[floatPreferencesKey(name)] = value.toFloat()
+                    name in INT_KEYS && value is Number -> prefs[intPreferencesKey(name)] = value.toInt()
+                    value is Number -> prefs[longPreferencesKey(name)] = value.toLong()
+                }
+            }
+        }
+    }
+
     private suspend fun edit(block: (MutablePreferences) -> Unit) {
         dataStore.edit(block)
     }
@@ -240,5 +265,9 @@ class SettingsRepository @Inject constructor(
         /** Valid range for the notification-dot scale slider. */
         const val MIN_DOT_SCALE = 0.6f
         const val MAX_DOT_SCALE = 1.8f
+
+        /** Preference keys whose value must be restored as Float (JSON loses the Int/Float distinction). */
+        val FLOAT_KEYS = setOf("dock_opacity", "notif_dot_scale")
+        val INT_KEYS = setOf("dock_columns", "home_columns", "drawer_columns")
     }
 }
