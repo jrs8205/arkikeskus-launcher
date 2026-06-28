@@ -15,7 +15,7 @@ object UpdateNotifier {
     fun notifyAvailable(context: Context, info: UpdateInfo) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Updates", NotificationManager.IMPORTANCE_DEFAULT),
+            NotificationChannel(CHANNEL, context.getString(R.string.update_notification_channel_name), NotificationManager.IMPORTANCE_DEFAULT),
         )
         // Tapping opens the launcher (which hosts the updater section in Settings).
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)

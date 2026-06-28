@@ -12,4 +12,5 @@
     <string name="update_whats_new">What\'s new</string>
     <string name="update_install">Update</string>
     <string name="update_never_checked">Not checked yet</string>
+    <string name="update_notification_channel_name">Updates</string>
 </resources>

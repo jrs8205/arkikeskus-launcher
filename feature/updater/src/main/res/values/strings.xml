@@ -12,4 +12,5 @@
     <string name="update_whats_new">Mitä uutta</string>
     <string name="update_install">Päivitä</string>
     <string name="update_never_checked">Ei vielä tarkistettu</string>
+    <string name="update_notification_channel_name">Päivitykset</string>
 </resources>
