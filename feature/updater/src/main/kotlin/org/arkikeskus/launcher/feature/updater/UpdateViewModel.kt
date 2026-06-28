@@ -46,6 +46,7 @@ class UpdateViewModel @Inject constructor(
 
     fun checkNow() = viewModelScope.launch {
         if (!_state.value.isReleaseBuild) return@launch
+        if (_state.value.checking) return@launch
         _state.update { it.copy(checking = true, upToDate = false, error = false) }
         runCatching { repository.checkLatest(currentVersionName()) }
             .onSuccess { info ->
