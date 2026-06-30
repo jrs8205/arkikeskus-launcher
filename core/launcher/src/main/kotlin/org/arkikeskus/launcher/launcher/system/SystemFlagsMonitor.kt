@@ -2,6 +2,7 @@ package org.arkikeskus.launcher.launcher.system
 
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -63,6 +64,7 @@ class SystemFlagsMonitor @Inject constructor(
             addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
             addAction(LocationManager.MODE_CHANGED_ACTION)
             addAction(NfcAdapter.ACTION_ADAPTER_STATE_CHANGED)
+            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
         }
         ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
 

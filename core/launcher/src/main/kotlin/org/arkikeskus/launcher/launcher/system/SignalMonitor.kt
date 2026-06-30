@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.SignalStrength
 import android.telephony.TelephonyCallback
+import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,15 +36,20 @@ class SignalMonitor @Inject constructor(
         } else {
             callbackFlow {
                 val executor = ContextCompat.getMainExecutor(context)
-                val callback = object : TelephonyCallback(), TelephonyCallback.SignalStrengthsListener {
+                var level = 0
+                var display: TelephonyDisplayInfo? = null
+                val callback = object :
+                    TelephonyCallback(),
+                    TelephonyCallback.SignalStrengthsListener,
+                    TelephonyCallback.DisplayInfoListener {
                     override fun onSignalStrengthsChanged(signalStrength: SignalStrength) {
-                        trySend(
-                            MobileStatus(
-                                active = true,
-                                level = signalStrength.level.coerceIn(0, 4),
-                                generation = currentGeneration(),
-                            ),
-                        )
+                        level = signalStrength.level.coerceIn(0, 4)
+                        trySend(MobileStatus(active = true, level = level, generation = generationOf(display)))
+                    }
+
+                    override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) {
+                        display = telephonyDisplayInfo
+                        trySend(MobileStatus(active = true, level = level, generation = generationOf(display)))
                     }
                 }
                 try {
@@ -58,20 +64,34 @@ class SignalMonitor @Inject constructor(
     private fun hasTelephony(): Boolean =
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)
 
-    private fun currentGeneration(): String? = try {
-        when (telephonyManager?.dataNetworkType) {
-            TelephonyManager.NETWORK_TYPE_NR -> "5G"
-            TelephonyManager.NETWORK_TYPE_LTE -> "4G"
-            TelephonyManager.NETWORK_TYPE_UMTS,
-            TelephonyManager.NETWORK_TYPE_HSPA,
-            TelephonyManager.NETWORK_TYPE_HSPAP,
-            TelephonyManager.NETWORK_TYPE_HSDPA,
-            TelephonyManager.NETWORK_TYPE_HSUPA,
-            -> "3G"
-            TelephonyManager.NETWORK_TYPE_GPRS,
-            TelephonyManager.NETWORK_TYPE_EDGE,
-            -> "2G"
-            else -> null
+    /**
+     * The label the system status bar would show: the carrier-override type takes priority (so NR-NSA
+     * reads "5G" and aggregated LTE reads "4G"), falling back to the base data network type ("LTE",
+     * "3G", "2G"). Requires READ_PHONE_STATE; without it the label is null and only the level shows.
+     */
+    private fun generationOf(display: TelephonyDisplayInfo?): String? = try {
+        when (display?.overrideNetworkType) {
+            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA,
+            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA_MMWAVE,
+            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED,
+            -> "5G"
+            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA,
+            TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO,
+            -> "4G"
+            else -> when (telephonyManager?.dataNetworkType) {
+                TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                TelephonyManager.NETWORK_TYPE_LTE -> "LTE"
+                TelephonyManager.NETWORK_TYPE_UMTS,
+                TelephonyManager.NETWORK_TYPE_HSPA,
+                TelephonyManager.NETWORK_TYPE_HSPAP,
+                TelephonyManager.NETWORK_TYPE_HSDPA,
+                TelephonyManager.NETWORK_TYPE_HSUPA,
+                -> "3G"
+                TelephonyManager.NETWORK_TYPE_GPRS,
+                TelephonyManager.NETWORK_TYPE_EDGE,
+                -> "2G"
+                else -> null
+            }
         }
     } catch (e: SecurityException) {
         null

@@ -37,4 +37,7 @@ data class LauncherSettings(
     /** Show a slim status bar (clock + battery + signal, with dynamic battery/signal colors) at the top
      *  of the home screen. */
     val showStatusBar: Boolean = false,
+    /** Hide the system status bar while the launcher is in the foreground (immersive/fullscreen home).
+     *  Independent of [showStatusBar]; combine the two to replace the system bar with the themed one. */
+    val hideSystemStatusBar: Boolean = false,
 )

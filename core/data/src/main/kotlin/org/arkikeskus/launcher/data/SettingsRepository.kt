@@ -57,6 +57,7 @@ class SettingsRepository @Inject constructor(
             appLabelTextScale = (p[Keys.APP_LABEL_SCALE] ?: 1.0f).coerceIn(MIN_LABEL_SCALE, MAX_LABEL_SCALE),
             appLabelColor = p[Keys.APP_LABEL_COLOR] ?: 0xFFFFFFFF.toInt(),
             showStatusBar = p[Keys.SHOW_STATUS_BAR] ?: false,
+            hideSystemStatusBar = p[Keys.HIDE_SYSTEM_STATUS_BAR] ?: false,
         )
     }
 
@@ -177,6 +178,9 @@ class SettingsRepository @Inject constructor(
 
     /** Shows/hides the home status bar (clock + battery + signal). */
     suspend fun setShowStatusBar(value: Boolean) = edit { it[Keys.SHOW_STATUS_BAR] = value }
+
+    /** Hides/shows the system status bar while the launcher is foreground (immersive home). */
+    suspend fun setHideSystemStatusBar(value: Boolean) = edit { it[Keys.HIDE_SYSTEM_STATUS_BAR] = value }
 
     suspend fun addToDock(key: String) = edit { p ->
         val current = currentFavorites(p).toMutableList()
@@ -354,6 +358,7 @@ class SettingsRepository @Inject constructor(
         val APP_LABEL_SCALE = floatPreferencesKey("app_label_scale")
         val APP_LABEL_COLOR = intPreferencesKey("app_label_color")
         val SHOW_STATUS_BAR = booleanPreferencesKey("show_status_bar")
+        val HIDE_SYSTEM_STATUS_BAR = booleanPreferencesKey("hide_system_status_bar")
     }
 
     companion object {

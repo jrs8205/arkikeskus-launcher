@@ -187,6 +187,11 @@ fun SettingsScreen(
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showHomeLabels, viewModel::setShowHomeLabels)
                 SwitchRow(stringResource(R.string.settings_page_indicator), s.showPageIndicator, viewModel::setShowPageIndicator)
                 SwitchRow(stringResource(R.string.settings_lock_desktop), s.desktopLocked, viewModel::setDesktopLocked)
+                SwitchRow(
+                    stringResource(R.string.settings_hide_status_bar),
+                    s.hideSystemStatusBar,
+                    viewModel::setHideSystemStatusBar,
+                )
                 StatusBarToggle(enabled = s.showStatusBar, onSetEnabled = viewModel::setShowStatusBar)
 
                 ExpressiveSectionTitle(stringResource(R.string.settings_icons))

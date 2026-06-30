@@ -1,7 +1,9 @@
 package org.arkikeskus.launcher.feature.home
 
+import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.content.ContextWrapper
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +28,8 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -42,6 +46,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +70,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -77,6 +83,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -120,6 +129,32 @@ fun HomeScreen(
     val settings = uiState.settings
     val context = LocalContext.current
     val windowHeightPx = LocalWindowInfo.current.containerSize.height
+
+    // Optionally hide the system status bar while the launcher is foreground (immersive home). No root
+    // needed; the bar returns for any other app. Re-applied on every ON_RESUME so returning from another
+    // app re-hides it. A swipe from the top still transiently reveals it (Android safety behaviour).
+    val view = LocalView.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(settings.hideSystemStatusBar, lifecycleOwner, view) {
+        val window = generateSequence(view.context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<Activity>().firstOrNull()?.window
+        fun apply() {
+            val controller = window?.insetsController ?: return
+            if (settings.hideSystemStatusBar) {
+                controller.systemBarsBehavior =
+                    android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller.hide(android.view.WindowInsets.Type.statusBars())
+            } else {
+                controller.show(android.view.WindowInsets.Type.statusBars())
+            }
+        }
+        apply()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) apply()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     // The single Pixel-style long-press menu, anchored to the long-pressed icon.
     var menuTarget by remember { mutableStateOf<AppMenuTarget?>(null) }
     var renameTarget by remember { mutableStateOf<AppItem?>(null) }
@@ -279,11 +314,25 @@ fun HomeScreen(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             if (settings.showStatusBar) {
+                val density = LocalDensity.current
+                // The status-bar zone height: use the display-cutout band (≈ system status bar height,
+                // and non-zero even when the system bar is hidden), with a sane fallback for no-cutout
+                // devices. Lets the themed bar sit in the cutout band, beside a centred punch-hole.
+                val statusZone = with(density) {
+                    WindowInsets.displayCutout.getTop(this).toDp()
+                }.coerceAtLeast(24.dp)
                 StatusBar(
+                    // Only align to the camera cutout when we own the top zone (system bar hidden).
+                    alignToCutout = settings.hideSystemStatusBar,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 18.dp, vertical = 2.dp),
+                        // When the system bar is hidden, occupy its zone at the very top (replacing it);
+                        // otherwise sit just below the still-visible system bar. Horizontal insets and
+                        // cutout handling live inside StatusBar.
+                        .then(
+                            if (settings.hideSystemStatusBar) Modifier.heightIn(min = statusZone)
+                            else Modifier.statusBarsPadding(),
+                        ),
                 )
             }
             Workspace(
@@ -616,7 +665,9 @@ private fun Modifier.pixelHomeSwipe(
             if (dragController.isOverScrollableWidget(down.position)) return@awaitEachGesture
             val velocityTracker = VelocityTracker()
             velocityTracker.addPosition(down.uptimeMillis, down.position)
-            var mode = 0 // 0 = undecided, 1 = drawer up-drag, 2 = left-edge action (right-drag on page 0)
+            // 0 = undecided, 1 = drawer up-drag, 2 = left-edge action (right-drag on page 0),
+            // 3 = notification shade opened (swallow the rest of the gesture so it can't reach the pager)
+            var mode = 0
             var lastY = down.position.y
 
             while (true) {
@@ -658,9 +709,13 @@ private fun Modifier.pixelHomeSwipe(
                                 lastY = change.position.y
                             }
                             dy > 0f && swipeDownForNotifications -> {
+                                // Open the shade, then keep consuming the rest of the gesture (mode 3)
+                                // until the finger lifts. Without this, the finger's continued sideways
+                                // drift after the shade opens leaks to the HorizontalPager, which nudges
+                                // a page and snaps back — the intermittent "little jump sideways".
+                                mode = 3
                                 change.consume()
                                 latestOnOpenNotifications()
-                                break // one-shot
                             }
                             else -> {
                                 break
@@ -684,7 +739,8 @@ private fun Modifier.pixelHomeSwipe(
                     latestOnDrawerDrag(change.position.y - lastY)
                     lastY = change.position.y
                 } else {
-                    // mode == 2: keep consuming the left-edge drag so the pager never grabs it.
+                    // mode == 2 (left-edge drag) or mode == 3 (shade opened): keep consuming so the
+                    // pager never grabs the rest of the gesture.
                     change.consume()
                 }
             }

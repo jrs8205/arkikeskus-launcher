@@ -76,6 +76,7 @@ class SettingsViewModel @Inject constructor(
     fun setAppLabelTextScale(value: Float) = update { repository.setAppLabelTextScale(value) }
     fun setAppLabelColor(argb: Int) = update { repository.setAppLabelColor(argb) }
     fun setShowStatusBar(value: Boolean) = update { repository.setShowStatusBar(value) }
+    fun setHideSystemStatusBar(value: Boolean) = update { repository.setHideSystemStatusBar(value) }
 
     private fun update(block: suspend () -> Unit) {
         viewModelScope.launch { block() }

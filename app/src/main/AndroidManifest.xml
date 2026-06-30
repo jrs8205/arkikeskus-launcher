@@ -12,6 +12,11 @@
          bar is enabled. Battery + Wi-Fi need no permission and work without it. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
+    <!-- Home status bar indicators: Wi-Fi / mobile / VPN / data-saver state (normal permissions, no
+         runtime prompt). Without ACCESS_NETWORK_STATE the connectivity callbacks throw. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
     <!-- A home launcher legitimately interacts with every installed app (open, uninstall, app info,
          notification badges). Without this, package-visibility filtering in a non-debuggable build
          silently blocks those cross-app intents (e.g. uninstall opens nothing). -->

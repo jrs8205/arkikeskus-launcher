@@ -25,6 +25,8 @@ client_secret*.json
 /design-full.png
 /statuspalkki.png
 /Launcher etusivu*.html
+# Ad-hoc device screenshots dropped in for feedback (local only)
+Screenshot_*.png
 
 # AOSP Launcher3 reference (local only, do not commit)
 Launcher3-*.tar.gz
