@@ -1,4 +1,4 @@
-package org.arkikeskus.launcher.role
+package org.arkikeskus.launcher.ui
 
 import android.app.role.RoleManager
 import android.content.Context

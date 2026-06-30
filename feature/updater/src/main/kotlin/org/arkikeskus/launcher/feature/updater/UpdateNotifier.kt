@@ -29,7 +29,7 @@ object UpdateNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notif = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setSmallIcon(R.drawable.ic_update_notification)
             .setContentTitle(context.getString(R.string.update_available_title, info.versionName))
             .setContentText(context.getString(R.string.update_check_now))
             .setAutoCancel(true)

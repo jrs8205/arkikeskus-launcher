@@ -22,7 +22,7 @@ class ApkInstaller @Inject constructor(
 
     /** Downloads the APK to cache and launches the system installer (or routes the user to grant the
      *  "install unknown apps" permission; falls back to opening the release page in the browser). */
-    suspend fun downloadAndInstall(info: UpdateInfo) {
+    suspend fun downloadAndInstall(info: UpdateInfo, onProgress: (Int) -> Unit = {}) {
         if (!installing.compareAndSet(false, true)) return
         try {
             if (!context.packageManager.canRequestPackageInstalls()) {
@@ -35,7 +35,7 @@ class ApkInstaller @Inject constructor(
                 }.onFailure { openReleasePage() }
                 return
             }
-            val file = withContext(Dispatchers.IO) { download(info) }
+            val file = withContext(Dispatchers.IO) { download(info, onProgress) }
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
@@ -47,7 +47,7 @@ class ApkInstaller @Inject constructor(
         }
     }
 
-    private fun download(info: UpdateInfo): File {
+    private fun download(info: UpdateInfo, onProgress: (Int) -> Unit): File {
         val dir = File(context.cacheDir, "updates").apply { mkdirs() }
         // Stable name so repeated taps reuse/overwrite rather than accumulate.
         val out = File(dir, "update.apk")
@@ -55,7 +55,22 @@ class ApkInstaller @Inject constructor(
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("download HTTP ${resp.code}")
             val body = resp.body ?: throw IOException("empty body")
-            out.outputStream().use { o -> body.byteStream().copyTo(o) }
+            val total = body.contentLength()
+            var downloaded = 0L
+            onProgress(0)
+            out.outputStream().use { o ->
+                body.byteStream().use { input ->
+                    val buf = ByteArray(64 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        o.write(buf, 0, n)
+                        downloaded += n
+                        if (total > 0) onProgress(((downloaded * 100) / total).toInt().coerceIn(0, 100))
+                    }
+                }
+            }
+            onProgress(100)
         }
         return out
     }

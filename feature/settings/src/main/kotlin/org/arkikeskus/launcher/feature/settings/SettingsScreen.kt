@@ -68,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import org.arkikeskus.launcher.feature.backup.BackupScreen
 import org.arkikeskus.launcher.feature.updater.UpdateSection
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.ui.DefaultLauncher
 import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.component.AppIcon
 import org.arkikeskus.launcher.ui.component.NotificationBadge
@@ -93,6 +94,11 @@ fun SettingsScreen(
     var showHiddenManager by remember { mutableStateOf(false) }
     var showLeftSwipePicker by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
+    var isDefaultLauncher by remember { mutableStateOf(DefaultLauncher.isDefault(context)) }
+    // Re-check after the user returns from the system "default home app" / role chooser.
+    val setDefaultLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { isDefaultLauncher = DefaultLauncher.isDefault(context) }
     val palette = if (isSystemInDarkTheme()) DarkExpressivePalette else LightExpressivePalette
 
     CompositionLocalProvider(LocalExpressivePalette provides palette) {
@@ -129,6 +135,15 @@ fun SettingsScreen(
                     letterSpacing = (-0.3).sp,
                     modifier = Modifier.padding(start = 6.dp, top = 10.dp, bottom = 6.dp),
                 )
+
+                ExpressiveActionRow(
+                    label = stringResource(R.string.settings_set_default),
+                    description = stringResource(
+                        if (isDefaultLauncher) R.string.settings_default_current else R.string.settings_default_tap,
+                    ),
+                ) {
+                    runCatching { setDefaultLauncher.launch(DefaultLauncher.requestIntent(context)) }
+                }
 
                 ExpressiveSectionTitle(stringResource(R.string.settings_gestures))
                 SwitchRow(stringResource(R.string.settings_swipe_up_drawer), s.swipeUpForDrawer, viewModel::setSwipeUp)
@@ -172,6 +187,7 @@ fun SettingsScreen(
                 SwitchRow(stringResource(R.string.settings_show_labels), s.showHomeLabels, viewModel::setShowHomeLabels)
                 SwitchRow(stringResource(R.string.settings_page_indicator), s.showPageIndicator, viewModel::setShowPageIndicator)
                 SwitchRow(stringResource(R.string.settings_lock_desktop), s.desktopLocked, viewModel::setDesktopLocked)
+                StatusBarToggle(enabled = s.showStatusBar, onSetEnabled = viewModel::setShowStatusBar)
 
                 ExpressiveSectionTitle(stringResource(R.string.settings_icons))
                 SliderRow(
@@ -304,6 +320,23 @@ private fun openNotificationAccess(context: android.content.Context) {
                 Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
+        }
+    }
+}
+
+/** Status-bar toggle. Turns on regardless (battery + Wi-Fi need no permission); when enabled it also
+ *  asks for READ_PHONE_STATE so the mobile-signal indicator can show (battery/Wi-Fi work without it). */
+@Composable
+private fun StatusBarToggle(enabled: Boolean, onSetEnabled: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { /* signal shows if granted */ }
+    SwitchRow(stringResource(R.string.settings_status_bar), enabled) { wantOn ->
+        onSetEnabled(wantOn)
+        if (wantOn &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            launcher.launch(android.Manifest.permission.READ_PHONE_STATE)
         }
     }
 }

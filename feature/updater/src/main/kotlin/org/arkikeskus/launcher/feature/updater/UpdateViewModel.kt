@@ -21,8 +21,13 @@ data class UpdateUiState(
     val checking: Boolean = false,
     val available: UpdateInfo? = null,
     val upToDate: Boolean = false,
-    val error: Boolean = false,
+    val error: UpdateError? = null,
+    val downloading: Boolean = false,
+    val downloadProgress: Int = 0,
 )
+
+/** Which step failed, so the UI can show a specific message. */
+enum class UpdateError { CHECK, INSTALL }
 
 @HiltViewModel
 class UpdateViewModel @Inject constructor(
@@ -48,7 +53,7 @@ class UpdateViewModel @Inject constructor(
     fun checkNow() = viewModelScope.launch {
         if (!_state.value.isReleaseBuild) return@launch
         if (_state.value.checking) return@launch
-        _state.update { it.copy(checking = true, upToDate = false, error = false) }
+        _state.update { it.copy(checking = true, upToDate = false, error = null) }
         runCatching { repository.checkLatest(currentVersionName()) }
             .onSuccess { info ->
                 settings.setUpdateLastCheck(System.currentTimeMillis())
@@ -56,7 +61,7 @@ class UpdateViewModel @Inject constructor(
             }
             .onFailure {
                 if (it is kotlinx.coroutines.CancellationException) throw it
-                _state.update { it.copy(checking = false, error = true) }
+                _state.update { it.copy(checking = false, error = UpdateError.CHECK) }
             }
     }
 
@@ -66,10 +71,14 @@ class UpdateViewModel @Inject constructor(
     }
 
     fun installUpdate(info: UpdateInfo) = viewModelScope.launch {
-        runCatching { installer.downloadAndInstall(info) }
+        _state.update { it.copy(downloading = true, downloadProgress = 0, error = null) }
+        runCatching {
+            installer.downloadAndInstall(info) { p -> _state.update { it.copy(downloadProgress = p) } }
+        }
+            .onSuccess { _state.update { it.copy(downloading = false) } }
             .onFailure { exc ->
                 if (exc is kotlinx.coroutines.CancellationException) throw exc
-                _state.update { it.copy(error = true) }
+                _state.update { it.copy(downloading = false, error = UpdateError.INSTALL) }
             }
     }
 

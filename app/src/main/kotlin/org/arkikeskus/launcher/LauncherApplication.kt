@@ -7,6 +7,12 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import org.arkikeskus.launcher.data.SettingsRepository
+import org.arkikeskus.launcher.feature.updater.UpdateScheduler
+import org.arkikeskus.launcher.feature.updater.isReleaseBuild
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -14,14 +20,26 @@ class LauncherApplication : Application(), SingletonImageLoader.Factory, Configu
 
     override fun onCreate() {
         super.onCreate()
-        if (org.arkikeskus.launcher.feature.updater.isReleaseBuild(this)) {
-            org.arkikeskus.launcher.feature.updater.UpdateScheduler.schedule(this)
+        if (isReleaseBuild(this)) {
+            // Schedule the periodic update check only when auto-update is enabled; cancel it otherwise.
+            // (Reads the persisted setting off the main thread; the worker also double-checks the flag.)
+            CoroutineScope(Dispatchers.Default).launch {
+                if (settingsRepository.autoUpdateEnabledOnce()) {
+                    UpdateScheduler.schedule(this@LauncherApplication)
+                } else {
+                    UpdateScheduler.cancel(this@LauncherApplication)
+                }
+            }
         }
     }
 
     /** Hilt-provided ImageLoader with the app-icon fetcher/keyer (see DataModule). */
     @Inject
     lateinit var imageLoader: ImageLoader
+
+    /** Reads the auto-update toggle at startup to decide whether to schedule the periodic check. */
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
 
     /** Hilt-provided WorkerFactory so [@HiltWorker] workers receive injected dependencies. */
     @Inject

@@ -274,8 +274,10 @@ class HomeLayoutRepository @Inject constructor(
         dao.deleteById(rowId)
     }
 
-    /** Atomically sets a widget row's full grid bounds (used by both move and resize). Returns false
-     *  (no change) if the row is gone, isn't a widget, or the target rect doesn't fit. */
+    /** Atomically sets a widget row's full grid bounds (used by both move and resize). If the target
+     *  rect is occupied, the overlapping items are pushed aside to free cells on the same page
+     *  ([ReorderPlanner]); returns false (no change) if the row is gone, isn't a widget, or no
+     *  arrangement fits. */
     suspend fun setWidgetBounds(
         rowId: Long, page: Int, cellX: Int, cellY: Int, spanX: Int, spanY: Int, columns: Int,
     ): Boolean = db.withTransaction {
@@ -283,9 +285,24 @@ class HomeLayoutRepository @Inject constructor(
         if (!row.isWidget) return@withTransaction false
         val sx = spanX.coerceAtLeast(1)
         val sy = spanY.coerceAtLeast(1)
-        if (!rectFitsForRow(dao.getContainer(HOME), rowId, page, cellX, cellY, sx, sy, columns)) {
-            return@withTransaction false
+        val items = dao.getContainer(HOME)
+        if (rectFitsForRow(items, rowId, page, cellX, cellY, sx, sy, columns)) {
+            dao.moveById(rowId, HOME, page, cellX, cellY)
+            dao.updateSpans(rowId, sx, sy)
+            return@withTransaction true
         }
+        // Target is occupied: try to push the overlapping items aside.
+        val cols = columns.coerceAtLeast(1)
+        val plan = ReorderPlanner.planFit(
+            items.map { ReorderPlanner.Rect(it.id, it.page, it.cellX, it.cellY, it.spanX, it.spanY) },
+            rowId, page, cellX, cellY, sx, sy, cols, ROWS,
+        ) ?: return@withTransaction false
+        // Park the widget + every displaced item off-grid (unique temp cells) so the unique
+        // (page,cellX,cellY) index can't be violated mid-update, then place each at its final cell.
+        var temp = -1
+        dao.moveById(rowId, HOME, temp, temp, temp); temp--
+        for (id in plan.keys) { dao.moveById(id, HOME, temp, temp, temp); temp-- }
+        for ((id, pos) in plan) dao.moveById(id, HOME, page, pos.first, pos.second)
         dao.moveById(rowId, HOME, page, cellX, cellY)
         dao.updateSpans(rowId, sx, sy)
         true

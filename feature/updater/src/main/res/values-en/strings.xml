@@ -11,6 +11,10 @@
     <string name="update_available_title">New version %1$s available</string>
     <string name="update_whats_new">What\'s new</string>
     <string name="update_install">Update</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_downloading_percent">%1$d %%</string>
+    <string name="update_check_failed">Couldn\'t check for updates</string>
+    <string name="update_install_failed">Couldn\'t download the update</string>
     <string name="update_never_checked">Not checked yet</string>
     <string name="update_notification_channel_name">Updates</string>
 </resources>

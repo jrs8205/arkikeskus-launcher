@@ -29,6 +29,8 @@ client_secret*.json
 # AOSP Launcher3 reference (local only, do not commit)
 Launcher3-*.tar.gz
 launcher3_src/
+CellLayout.java
+/celllayout/
 
 # Lawnchair reference (GPL — local only, do NOT commit/redistribute)
 lawnchair-*.zip

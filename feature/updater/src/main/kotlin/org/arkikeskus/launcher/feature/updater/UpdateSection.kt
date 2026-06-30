@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -94,10 +95,24 @@ fun UpdateSection(modifier: Modifier = Modifier, viewModel: UpdateViewModel = hi
                         Text(info.notes, color = p.dim, fontSize = 13.sp)
                         Button(
                             onClick = { viewModel.installUpdate(info) },
+                            enabled = !s.downloading,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.White),
                         ) {
-                            Text(stringResource(R.string.update_install))
+                            Text(stringResource(if (s.downloading) R.string.update_downloading else R.string.update_install))
+                        }
+                        if (s.downloading) {
+                            LinearProgressIndicator(
+                                progress = { s.downloadProgress / 100f },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = Accent,
+                                trackColor = p.trackOff,
+                            )
+                            Text(
+                                stringResource(R.string.update_downloading_percent, s.downloadProgress),
+                                color = p.dim,
+                                fontSize = 12.sp,
+                            )
                         }
                     }
                 }
@@ -155,9 +170,14 @@ fun UpdateSection(modifier: Modifier = Modifier, viewModel: UpdateViewModel = hi
                     modifier = Modifier.padding(start = 4.dp, top = 8.dp),
                 )
             }
-            if (s.error) {
+            s.error?.let { err ->
                 Text(
-                    stringResource(R.string.update_error),
+                    stringResource(
+                        when (err) {
+                            UpdateError.CHECK -> R.string.update_check_failed
+                            UpdateError.INSTALL -> R.string.update_install_failed
+                        },
+                    ),
                     color = p.dim,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(start = 4.dp, top = 8.dp),

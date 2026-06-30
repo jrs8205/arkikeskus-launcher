@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="settings_title">Settings</string>
+    <string name="settings_set_default">Set as default launcher</string>
+    <string name="settings_default_current">Arkikeskus is your default launcher</string>
+    <string name="settings_default_tap">Tap to set Arkikeskus as your home app</string>
     <string name="settings_gestures">Gestures</string>
     <string name="settings_swipe_up_drawer">Swipe up → apps</string>
     <string name="settings_swipe_down_notif">Swipe down → notifications</string>
@@ -38,6 +41,7 @@
     <string name="settings_left_edge_pick">Choose app</string>
     <string name="settings_close">Close</string>
     <string name="settings_lock_desktop">Lock desktop</string>
+    <string name="settings_status_bar">Status bar (clock, battery, signal)</string>
     <string name="settings_frequent_apps">Most used at the top</string>
     <string name="settings_backup">Backup</string>
 </resources>

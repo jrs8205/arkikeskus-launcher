@@ -278,6 +278,14 @@ fun HomeScreen(
             ),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            if (settings.showStatusBar) {
+                StatusBar(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 2.dp),
+                )
+            }
             Workspace(
                 pageCount = uiState.pageCount,
                 columns = settings.homeColumns,
@@ -327,7 +335,9 @@ fun HomeScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .statusBarsPadding()
+                    // Status-bar inset is consumed by the StatusBar above when it's shown; otherwise the
+                    // workspace takes it itself.
+                    .then(if (settings.showStatusBar) Modifier else Modifier.statusBarsPadding())
                     // No horizontal padding: the grid spans the full width so a "full width" widget
                     // (spanX = columns at cellX 0) reaches both screen edges with no side gap. Icons
                     // shift outward by a negligible ~8dp.

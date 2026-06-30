@@ -68,8 +68,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.arkikeskus.launcher.model.AppItem
+import org.arkikeskus.launcher.data.ReorderPlanner
 import org.arkikeskus.launcher.ui.DragSource
 import org.arkikeskus.launcher.ui.HomeDragController
+import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.component.AppIcon
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlin.math.roundToInt
@@ -946,6 +948,20 @@ fun Workspace(
                             defaultSpanX = defaultSpanX,
                             cellW = cellW, cellH = cellH, columns = columns, rows = rows, density = density,
                             rectFree = { x, y, sx, sy -> rectFreeOnGrid(ew.rowId, ew.page, x, y, sx, sy) },
+                            // A resize "fits" if the cells are free OR the overlapping items can be pushed
+                            // aside (same plan the repository commits on release), so the handle only grows
+                            // when the commit will actually succeed.
+                            canFit = { x, y, sx, sy ->
+                                rectFreeOnGrid(ew.rowId, ew.page, x, y, sx, sy) ||
+                                    ReorderPlanner.planFit(
+                                        effectiveEntries.mapIndexed { i, e ->
+                                            val (esx, esy) = when (e) { is PlacedWidget -> e.spanX to e.spanY; else -> 1 to 1 }
+                                            val erow = if (e is PlacedWidget) e.rowId else -(i.toLong() + 1)
+                                            ReorderPlanner.Rect(erow, e.page, e.cellX, e.cellY, esx, esy)
+                                        },
+                                        ew.rowId, ew.page, x, y, sx, sy, columns, rows,
+                                    ) != null
+                            },
                             onSetBounds = { x, y, sx, sy -> scope.launch { onSetWidgetBounds(ew.rowId, ew.page, x, y, sx, sy) } },
                             onReconfigure = { onReconfigureWidget(ew.appWidgetId); editingWidget = null },
                             onExit = { editingWidget = null },
@@ -957,6 +973,27 @@ fun Workspace(
                                         }
                                     },
                             dragController = dragController,
+                            canMovePrev = ew.page > 0,
+                            canMoveNext = ew.page < pageCount,
+                            onMoveToPage = { targetPage, msx, msy ->
+                                // Place at the first free cell on the target page; commit, exit edit and
+                                // scroll there. No room → no-op (stay in edit).
+                                run loop@{
+                                    for (fy in 0..(rows - msy).coerceAtLeast(0)) {
+                                        for (fx in 0..(columns - msx).coerceAtLeast(0)) {
+                                            if (rectFreeOnGrid(ew.rowId, targetPage, fx, fy, msx, msy)) {
+                                                widgetOptimistic = ew.rowId to Triple(targetPage, fx, fy)
+                                                scope.launch {
+                                                    if (!onSetWidgetBounds(ew.rowId, targetPage, fx, fy, msx, msy)) widgetOptimistic = null
+                                                }
+                                                editingWidget = null
+                                                scope.launch { pagerState.animateScrollToPage(targetPage) }
+                                                return@loop
+                                            }
+                                        }
+                                    }
+                                }
+                            },
                         )
                     }
                 }
@@ -1028,12 +1065,16 @@ private fun WidgetEditOverlay(
     rows: Int,
     density: androidx.compose.ui.unit.Density,
     rectFree: (x: Int, y: Int, spanX: Int, spanY: Int) -> Boolean,
+    canFit: (x: Int, y: Int, spanX: Int, spanY: Int) -> Boolean,
     onSetBounds: (x: Int, y: Int, spanX: Int, spanY: Int) -> Unit,
     onReconfigure: () -> Unit,
     onExit: () -> Unit,
     dragController: HomeDragController,
     onRemove: () -> Unit,
     onMove: (x: Int, y: Int, spanX: Int, spanY: Int) -> Unit,
+    canMovePrev: Boolean,
+    canMoveNext: Boolean,
+    onMoveToPage: (targetPage: Int, spanX: Int, spanY: Int) -> Unit,
 ) {
     var cx by remember(widget.rowId) { mutableStateOf(widget.cellX) }
     var cy by remember(widget.rowId) { mutableStateOf(widget.cellY) }
@@ -1134,7 +1175,7 @@ private fun WidgetEditOverlay(
             Box(hMod(right, (top + bottom) / 2f) { d ->
                 accX += d.x
                 val s = step(accX, cellW)
-                if (s != 0) { val n = (sx + s).coerceIn(range.minX, range.maxX); if (n != sx && rectFree(cx, cy, n, sy)) sx = n; accX = 0f }
+                if (s != 0) { val n = (sx + s).coerceIn(range.minX, range.maxX); if (n != sx && canFit(cx, cy, n, sy)) sx = n; accX = 0f }
             })
             Box(hMod(left, (top + bottom) / 2f) { d ->
                 accX += d.x
@@ -1144,7 +1185,7 @@ private fun WidgetEditOverlay(
                     val nCx = (cx + s).coerceIn(0, rightEdge - range.minX)
                     val nSx = (rightEdge - nCx).coerceIn(range.minX, range.maxX)
                     val fCx = rightEdge - nSx
-                    if ((fCx != cx || nSx != sx) && rectFree(fCx, cy, nSx, sy)) { cx = fCx; sx = nSx }
+                    if ((fCx != cx || nSx != sx) && canFit(fCx, cy, nSx, sy)) { cx = fCx; sx = nSx }
                     accX = 0f
                 }
             })
@@ -1153,7 +1194,7 @@ private fun WidgetEditOverlay(
             Box(hMod((left + right) / 2f, bottom) { d ->
                 accY += d.y
                 val s = step(accY, cellH)
-                if (s != 0) { val n = (sy + s).coerceIn(range.minY, range.maxY); if (n != sy && rectFree(cx, cy, sx, n)) sy = n; accY = 0f }
+                if (s != 0) { val n = (sy + s).coerceIn(range.minY, range.maxY); if (n != sy && canFit(cx, cy, sx, n)) sy = n; accY = 0f }
             })
             Box(hMod((left + right) / 2f, top) { d ->
                 accY += d.y
@@ -1163,7 +1204,7 @@ private fun WidgetEditOverlay(
                     val nCy = (cy + s).coerceIn(0, bottomEdge - range.minY)
                     val nSy = (bottomEdge - nCy).coerceIn(range.minY, range.maxY)
                     val fCy = bottomEdge - nSy
-                    if ((fCy != cy || nSy != sy) && rectFree(cx, fCy, sx, nSy)) { cy = fCy; sy = nSy }
+                    if ((fCy != cy || nSy != sy) && canFit(cx, fCy, sx, nSy)) { cy = fCy; sy = nSy }
                     accY = 0f
                 }
             })
@@ -1225,6 +1266,47 @@ private fun WidgetEditOverlay(
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(with(density) { (handlePx * 0.6f).toDp() }),
             )
+        }
+    }
+
+    // Page-move arrows (bottom-centre): move this widget to the previous / next home page (commits to
+    // the first free cell there). Placed away from the resize handles + gear so they never overlap.
+    if (canMovePrev || canMoveNext) {
+        val arrowY = (rows * cellH - handlePx - with(density) { 16.dp.toPx() })
+        val centerX = columns * cellW / 2f
+        if (canMovePrev) {
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((centerX - handlePx - with(density) { 8.dp.toPx() }).roundToInt(), arrowY.roundToInt()) }
+                    .size(with(density) { handlePx.toDp() })
+                    .background(primary, CircleShape)
+                    .clickable { onMoveToPage(widget.page - 1, sx, sy) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(LauncherIcons.ChevronRight),
+                    contentDescription = stringResource(R.string.widget_move_prev_page),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(with(density) { (handlePx * 0.62f).toDp() }).graphicsLayer { scaleX = -1f },
+                )
+            }
+        }
+        if (canMoveNext) {
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((centerX + with(density) { 8.dp.toPx() }).roundToInt(), arrowY.roundToInt()) }
+                    .size(with(density) { handlePx.toDp() })
+                    .background(primary, CircleShape)
+                    .clickable { onMoveToPage(widget.page + 1, sx, sy) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(LauncherIcons.ChevronRight),
+                    contentDescription = stringResource(R.string.widget_move_next_page),
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(with(density) { (handlePx * 0.62f).toDp() }),
+                )
+            }
         }
     }
 }
