@@ -1,0 +1,6 @@
+- Widgets are now included in backup and restore (restored as tap-to-set-up placeholders).
+- Third-party icon pack support (Settings > Icons > Icon pack).
+- Pressing HOME dismisses open popups.
+- Dropping an icon onto a widget snaps it back instead of hiding under it.
+- Drive restore list shows each backup's date and marks the newest.
+- Various fixes and polish.

@@ -1,0 +1,16 @@
+Arkikeskus Launcher is a modern, lightweight Android home-screen launcher built entirely with Jetpack Compose and Material 3. It is bilingual (Finnish and English) and works as a standalone launcher for anyone.
+
+Features:
+
+* Paged home screen with free icon placement and smooth drag-and-drop — move icons within a page, across pages, and between the home grid and the dock.
+* Dock of favourite apps.
+* App drawer with universal search: apps, system settings pages, contacts (opt-in), and a calculator / unit converter, plus an optional most-used apps row.
+* Home-screen widgets — add, resize, move, reconfigure, and stretch a widget to full width. Collection widgets (chat lists, calendars) scroll in place.
+* Folders on the home screen and inside the app drawer.
+* Third-party icon packs (ADW/Nova appfilter format) and Material You themed icons.
+* Configurable gestures: swipe up for the app drawer, swipe down for notifications, and a configurable left-edge swipe.
+* Notification dots / badges, and an optional themed status bar.
+* Backup and restore your layout to a file, plus optional Google Drive auto-backup. Widgets are included in backups.
+* Lock desktop, hide apps, rename apps with custom labels, and a self-contained settings screen.
+
+Free and open-source under the Apache-2.0 license.

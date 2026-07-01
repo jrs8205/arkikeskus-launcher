@@ -36,6 +36,17 @@ releases (it notifies you and installs with one tap).
 
 Requires **Android 11 (API 30)** or newer.
 
+### Auto-updates with Obtainium
+
+Prefer an app-store-style experience with automatic updates? Install
+[**Obtainium**](https://github.com/ImranR98/Obtainium) and add this repository as an app source:
+
+```
+https://github.com/jrs8205/arkikeskus-launcher
+```
+
+Obtainium watches the Releases page and updates the launcher for you.
+
 ## Features
 
 - **Paged home screen** with free icon placement and smooth drag-and-drop — move icons within a
