@@ -11,6 +11,13 @@ It is **bilingual** — Finnish (default) and English — and shares the visual 
 
 > Status: early but daily-driven. Built from scratch on a current Kotlin/Compose stack.
 
+📖 **New here?** The **[Wiki](https://github.com/jrs8205/arkikeskus-launcher/wiki)** has the full user guide —
+[setup](https://github.com/jrs8205/arkikeskus-launcher/wiki/Getting-Started),
+[features](https://github.com/jrs8205/arkikeskus-launcher/wiki/Features),
+[icon packs](https://github.com/jrs8205/arkikeskus-launcher/wiki/Icon-Packs),
+[backup](https://github.com/jrs8205/arkikeskus-launcher/wiki/Backup-and-Restore) and a
+[FAQ](https://github.com/jrs8205/arkikeskus-launcher/wiki/FAQ).
+
 ## Screenshots
 
 <p align="center">
