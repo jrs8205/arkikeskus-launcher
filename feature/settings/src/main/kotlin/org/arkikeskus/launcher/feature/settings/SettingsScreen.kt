@@ -71,6 +71,8 @@ import org.arkikeskus.launcher.model.AppItem
 import org.arkikeskus.launcher.ui.DefaultLauncher
 import org.arkikeskus.launcher.ui.LauncherIcons
 import org.arkikeskus.launcher.ui.component.AppIcon
+import org.arkikeskus.launcher.ui.component.LocalIconPack
+import org.arkikeskus.launcher.ui.component.LocalThemedIcons
 import org.arkikeskus.launcher.ui.component.NotificationBadge
 import org.arkikeskus.launcher.ui.expressive.Accent
 import org.arkikeskus.launcher.ui.expressive.DarkExpressivePalette
@@ -103,7 +105,13 @@ fun SettingsScreen(
     ) { isDefaultLauncher = DefaultLauncher.isDefault(context) }
     val palette = if (isSystemInDarkTheme()) DarkExpressivePalette else LightExpressivePalette
 
-    CompositionLocalProvider(LocalExpressivePalette provides palette) {
+    CompositionLocalProvider(
+        LocalExpressivePalette provides palette,
+        // So AppIcons in the pickers (left-edge app, hidden apps) match the selected icon pack / themed
+        // icons like every other surface.
+        LocalIconPack provides s.iconPackPackage,
+        LocalThemedIcons provides s.useThemedIcons,
+    ) {
         if (showBackup) {
             BackupScreen(onBack = { showBackup = false }, modifier = modifier.fillMaxSize())
             return@CompositionLocalProvider

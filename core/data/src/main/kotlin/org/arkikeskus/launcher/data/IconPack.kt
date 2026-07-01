@@ -4,17 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.Xml
 import androidx.core.content.res.ResourcesCompat
-import androidx.core.graphics.drawable.toBitmap
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.xmlpull.v1.XmlPullParser
 import javax.inject.Inject
@@ -25,54 +17,19 @@ data class IconPackInfo(val packageName: String, val label: String)
 
 /**
  * A parsed third-party icon pack (the de-facto ADW/Nova `appfilter.xml` format). Maps an app component
- * to one of the pack's drawables, and can mask an unmapped app's normal icon into the pack's style
- * (iconback + iconmask + iconupon + scale) so every icon looks consistent — the Nova/Lawnchair
- * convention. Adapted from AOSP-adjacent icon-pack handling; our repo is Apache-2.0.
+ * to one of the pack's drawables. Unmapped apps keep their normal icon (modern launchers such as
+ * Lawnchair no longer mask unmapped icons into the pack style, and most current packs ship no mask).
  */
 class IconPack(
     private val packageName: String,
     private val res: Resources,
     private val componentMap: Map<String, String>,
-    private val iconBack: Bitmap?,
-    private val iconMask: Bitmap?,
-    private val iconUpon: Bitmap?,
-    private val scale: Float,
 ) {
-    /** True if the pack defines any masking layer (so unmapped icons can be normalised to its style). */
-    val hasMask: Boolean get() = iconBack != null || iconMask != null || iconUpon != null
-
     /** The pack's drawable for [component], or null if the pack doesn't map it. */
     fun getIcon(component: ComponentName): Drawable? {
         val name = componentMap["${component.packageName}/${component.className}"] ?: return null
         val id = res.getIdentifier(name, "drawable", packageName).takeIf { it != 0 } ?: return null
         return runCatching { ResourcesCompat.getDrawable(res, id, null) }.getOrNull()
-    }
-
-    /**
-     * Composites [base] (an unmapped app's normal icon) into the pack's style at [size] px: the icon is
-     * scaled by [scale], clipped by iconmask (its opaque pixels erase the icon), drawn over iconback and
-     * under iconupon. If the pack has no mask layers this just returns the (scaled) icon.
-     */
-    fun maskIcon(base: Drawable, size: Int): Drawable {
-        val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        val full = Rect(0, 0, size, size)
-
-        // 1. The app icon, scaled toward the centre by [scale].
-        val inset = ((1f - scale).coerceIn(0f, 0.9f) * size / 2f).toInt()
-        canvas.drawBitmap(base.toBitmap(width = size, height = size), null, Rect(inset, inset, size - inset, size - inset), paint)
-        // 2. iconmask erases the icon where the mask is opaque (e.g. the corners outside a squircle).
-        iconMask?.let {
-            canvas.drawBitmap(it, null, full, Paint(paint).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
-        }
-        // 3. iconback is drawn BEHIND the masked icon.
-        iconBack?.let {
-            canvas.drawBitmap(it, null, full, Paint(paint).apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OVER) })
-        }
-        // 4. iconupon (gloss/overlay) on top.
-        iconUpon?.let { canvas.drawBitmap(it, null, full, paint) }
-        return BitmapDrawable(res, result)
     }
 }
 
@@ -135,44 +92,20 @@ class IconPackRepository @Inject constructor(
         }
 
         val map = HashMap<String, String>()
-        var back: String? = null
-        var mask: String? = null
-        var upon: String? = null
-        var scale = 1f
         try {
             var event = parser.eventType
             while (event != XmlPullParser.END_DOCUMENT) {
-                if (event == XmlPullParser.START_TAG) {
-                    when (parser.name) {
-                        "item" -> {
-                            val comp = componentKey(parser.getAttributeValue(null, "component"))
-                            val drawable = parser.getAttributeValue(null, "drawable")
-                            if (comp != null && !drawable.isNullOrEmpty() && comp !in map) map[comp] = drawable
-                        }
-                        // Packs may list several iconbacks; the first is fine for a consistent look.
-                        "iconback" -> if (back == null) back = parser.getAttributeValue(null, "img")
-                            ?: parser.getAttributeValue(null, "img1")
-                        "iconmask" -> if (mask == null) mask = parser.getAttributeValue(null, "img")
-                            ?: parser.getAttributeValue(null, "img1")
-                        "iconupon" -> if (upon == null) upon = parser.getAttributeValue(null, "img")
-                            ?: parser.getAttributeValue(null, "img1")
-                        "scale" -> scale = parser.getAttributeValue(null, "factor")?.toFloatOrNull() ?: scale
-                    }
+                if (event == XmlPullParser.START_TAG && parser.name == "item") {
+                    val comp = componentKey(parser.getAttributeValue(null, "component"))
+                    val drawable = parser.getAttributeValue(null, "drawable")
+                    if (comp != null && !drawable.isNullOrEmpty() && comp !in map) map[comp] = drawable
                 }
                 event = parser.next()
             }
         } finally {
             runCatching { closeable.close() }
         }
-        return IconPack(
-            packageName = pkg,
-            res = res,
-            componentMap = map,
-            iconBack = loadBitmap(res, pkg, back),
-            iconMask = loadBitmap(res, pkg, mask),
-            iconUpon = loadBitmap(res, pkg, upon),
-            scale = scale.coerceIn(0.3f, 1.2f),
-        )
+        return IconPack(packageName = pkg, res = res, componentMap = map)
     }
 
     /** "ComponentInfo{pkg/cls}" → "pkg/cls" (the map key); null for non-component entries. */
@@ -180,12 +113,6 @@ class IconPackRepository @Inject constructor(
         if (raw == null) return null
         val inner = raw.substringAfter('{', "").substringBefore('}', "")
         return inner.takeIf { it.isNotEmpty() && '/' in inner }
-    }
-
-    private fun loadBitmap(res: Resources, pkg: String, name: String?): Bitmap? {
-        if (name.isNullOrEmpty()) return null
-        val id = res.getIdentifier(name, "drawable", pkg).takeIf { it != 0 } ?: return null
-        return runCatching { ResourcesCompat.getDrawable(res, id, null)?.toBitmap() }.getOrNull()
     }
 
     private companion object {

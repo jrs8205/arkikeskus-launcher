@@ -241,10 +241,15 @@ class HomeLayoutRepository @Inject constructor(
             cellY = cellY,
         )
 
-    /** True if (page,cellX,cellY) lies within any widget's rectangle in [items] (excluding [excludeId]). */
+    /**
+     * True if (page,cellX,cellY) lies within any widget's rectangle in [items] (excluding [excludeId]).
+     * Covers BOTH bound widgets and restored-but-unbound placeholders (`widgetProvider != null`) — a
+     * placeholder still occupies its spanX×spanY footprint, so a drop must not land inside it (else the
+     * app hides under it / a swap corrupts the multi-cell row). `isWidget` alone missed placeholders.
+     */
     private fun cellInWidget(items: List<HomeItemEntity>, excludeId: Long, page: Int, cellX: Int, cellY: Int): Boolean =
         items.any {
-            it.id != excludeId && it.isWidget && it.page == page &&
+            it.id != excludeId && it.widgetProvider != null && it.page == page &&
                 cellX in it.cellX until (it.cellX + it.spanX) &&
                 cellY in it.cellY until (it.cellY + it.spanY)
         }

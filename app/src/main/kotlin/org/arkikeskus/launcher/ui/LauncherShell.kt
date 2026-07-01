@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -29,12 +30,16 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.arkikeskus.launcher.feature.appdrawer.AppDrawerScreen
 import org.arkikeskus.launcher.feature.home.HomeScreen
 import org.arkikeskus.launcher.ui.component.AppIcon
+import org.arkikeskus.launcher.ui.component.LocalIconPack
+import org.arkikeskus.launcher.ui.component.LocalThemedIcons
 import kotlin.math.roundToInt
 
 /**
@@ -56,6 +61,7 @@ fun LauncherShell(
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val iconStyle by hiltViewModel<LauncherShellViewModel>().iconStyle.collectAsStateWithLifecycle()
     val progress = remember { Animatable(0f) }
     var shellHeightPx by remember { mutableFloatStateOf(1f) }
     var shellOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -93,7 +99,6 @@ fun LauncherShell(
 
     fun animateProgress(target: Float) {
         isDraggingDrawer = false
-        android.util.Log.d("AntigravitySwipe", "animateProgress target=$target")
         dragJob?.cancel()
         dragJob = scope.launch { progress.animateTo(target, settleSpring) }
     }
@@ -102,11 +107,9 @@ fun LauncherShell(
         if (!isDraggingDrawer) {
             isDraggingDrawer = true
             dragProgress = progress.value
-            android.util.Log.d("AntigravitySwipe", "dragDrawer START: progress.value=${progress.value}")
         }
         // Swipe up (negative dy) increases progress; clamp to [0, 1].
         val target = (dragProgress - dyPx / shellHeightPx).coerceIn(0f, 1f)
-        android.util.Log.d("AntigravitySwipe", "dragDrawer: dyPx=$dyPx, shellHeight=$shellHeightPx, oldProgress=$dragProgress, target=$target")
         dragProgress = target
         dragJob?.cancel()
         dragJob = scope.launch { progress.snapTo(target) }
@@ -115,7 +118,6 @@ fun LauncherShell(
     fun settleDrawer(velocityPxPerSec: Float) {
         val currentVal = if (isDraggingDrawer) dragProgress else progress.value
         isDraggingDrawer = false
-        android.util.Log.d("AntigravitySwipe", "settleDrawer START: currentVal=$currentVal, velocity=$velocityPxPerSec")
         // Launcher3-style: a fling (release speed past the threshold) snaps to the direction of the
         // fling regardless of distance; otherwise settle by how far it was dragged. Velocity is px/s.
         val flingThreshold = 600f
@@ -124,7 +126,6 @@ fun LauncherShell(
             velocityPxPerSec > flingThreshold -> 0f  // fast down → close
             else -> if (currentVal > 0.4f) 1f else 0f
         }
-        android.util.Log.d("AntigravitySwipe", "settleDrawer target decided: $target")
         dragJob?.cancel()
         dragJob = scope.launch {
             progress.snapTo(currentVal)
@@ -206,12 +207,19 @@ fun LauncherShell(
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                AppIcon(
-                    appItem = dragged,
-                    labelColor = Color.White,
-                    showLabel = false,
-                    iconSize = 52.dp,
-                )
+                // Match the surfaces' icon style (the floating icon is a sibling of Home/Drawer, outside
+                // their CompositionLocal scopes, so without this it reverts to the plain system icon).
+                CompositionLocalProvider(
+                    LocalIconPack provides iconStyle.iconPack,
+                    LocalThemedIcons provides iconStyle.themed,
+                ) {
+                    AppIcon(
+                        appItem = dragged,
+                        labelColor = Color.White,
+                        showLabel = false,
+                        iconSize = 52.dp,
+                    )
+                }
             }
         }
     }

@@ -88,9 +88,9 @@ class LauncherAppsSource @Inject constructor(
      * device HOME): the app can be removed mid-load or its profile locked, so any failure resolves to
      * a null icon instead of propagating.
      *
-     * A selected [iconPack] takes priority: a mapped app uses the pack's drawable, an unmapped app is
-     * masked to the pack's style. Otherwise, when [themed] is set (and the device + app support it) the
-     * Material You monochrome icon is returned, tinted for the [dark]/light theme; else the normal icon.
+     * A selected [iconPack] takes priority: a mapped app uses the pack's drawable, an unmapped app keeps
+     * its normal icon. Otherwise, when [themed] is set (and the device + app support it) the Material You
+     * monochrome icon is returned, tinted for the [dark]/light theme; else the normal icon.
      */
     fun loadIcon(
         appItem: AppItem,
@@ -101,15 +101,11 @@ class LauncherAppsSource @Inject constructor(
         val info = launcherApps.getActivityList(appItem.packageName, appItem.user)
             .firstOrNull { it.componentName.className == appItem.className }
             ?: return@runCatching null
-        // Icon pack overrides everything else when one is selected and loads.
+        // A selected icon pack overrides themed icons: use the pack's drawable if it maps this app,
+        // otherwise fall through to the normal icon below.
         if (iconPack.isNotBlank()) {
-            iconPacks.get(iconPack)?.let { pack ->
-                pack.getIcon(appItem.componentName)?.let { return@runCatching it }
-                val normal = info.getBadgedIcon(0)
-                return@runCatching if (pack.hasMask) pack.maskIcon(normal, ICON_MASK_PX) else normal
-            }
-        }
-        if (themed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            iconPacks.get(iconPack)?.getIcon(appItem.componentName)?.let { return@runCatching it }
+        } else if (themed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             themedIcon(info, dark)?.let { return@runCatching it }
         }
         info.getBadgedIcon(0)
@@ -138,10 +134,5 @@ class LauncherAppsSource @Inject constructor(
     } else {
         context.getColor(android.R.color.system_accent1_100) to
             context.getColor(android.R.color.system_neutral2_700)
-    }
-
-    private companion object {
-        /** Canvas size (px) for compositing an unmapped app icon into an icon pack's mask. */
-        const val ICON_MASK_PX = 192
     }
 }
