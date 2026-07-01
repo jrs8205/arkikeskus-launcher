@@ -302,6 +302,19 @@ fun HomeScreen(
     LaunchedEffect(dragController.moving) {
         if (dragController.moving) menuTarget = null
     }
+    // Pressing HOME (onNewIntent → homeSignals) returns to a clean home: dismiss every open popup /
+    // overlay. Without this the long-press app menu and the empty-area options popup lingered until the
+    // user pressed Back — a Compose Popup doesn't react to HOME on its own. (Workspace separately uses
+    // homeSignals to scroll back to page 0; a SharedFlow feeds both collectors.)
+    LaunchedEffect(homeSignals) {
+        homeSignals.collect {
+            menuTarget = null
+            homeOptions = null
+            renameTarget = null
+            openFolderId = null
+            showWidgetPicker = false
+        }
+    }
 
     // Notification badges (empty when disabled), and whether to render the count or a plain dot.
     val badges = if (settings.showNotificationDots) uiState.badges else emptyMap()
