@@ -39,13 +39,13 @@ class HomeLayoutRepository @Inject constructor(
         }
     }
 
-    /** Moves/swaps a home item to a target home cell. Returns false if the item is gone. */
+    /** Moves/swaps a home item to a target home cell. Returns false if the item is gone OR the target
+     *  is inside a widget's rectangle (so the caller rolls its optimistic placement back). */
     suspend fun moveItem(appItem: AppItem, page: Int, cellX: Int, cellY: Int): Boolean =
         db.withTransaction {
             val source = dao.getByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
                 ?: return@withTransaction false
             moveOrSwap(source, page, cellX, cellY)
-            true
         }
 
     /** Places [appItem] on the home screen at a cell (used for a dock→home drop), swapping/falling back. */
@@ -53,8 +53,7 @@ class HomeLayoutRepository @Inject constructor(
         db.withTransaction {
             val existing = dao.getByKey(HOME, appItem.packageName, appItem.className, appItem.userSerial)
             if (existing != null) {
-                moveOrSwap(existing, page, cellX, cellY)
-                return@withTransaction true
+                return@withTransaction moveOrSwap(existing, page, cellX, cellY)
             }
             val items = dao.getContainer(HOME)
             val (p, x, y) = if (dao.getAt(HOME, page, cellX, cellY) == null &&
@@ -77,7 +76,6 @@ class HomeLayoutRepository @Inject constructor(
         db.withTransaction {
             val source = dao.getById(folderId) ?: return@withTransaction false
             moveOrSwap(source, page, cellX, cellY)
-            true
         }
 
     /** Pins a deep shortcut at the first free home cell (no-op if it's already on home). */
@@ -213,11 +211,14 @@ class HomeLayoutRepository @Inject constructor(
     /**
      * Moves [source] to a target cell in the [HOME] container, swapping with the cell's occupant if
      * any. Call inside a transaction: the swap parks [source] off-grid so the unique index holds.
+     * Returns false (no change) when the target is inside a widget's rectangle (bound OR a restored
+     * placeholder) — the caller uses this to roll back its optimistic placement so the icon snaps back
+     * instead of ending up hidden under the widget.
      */
-    private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int) {
-        if (source.page == page && source.cellX == cellX && source.cellY == cellY) return
+    private suspend fun moveOrSwap(source: HomeItemEntity, page: Int, cellX: Int, cellY: Int): Boolean {
+        if (source.page == page && source.cellX == cellX && source.cellY == cellY) return true
         // Widgets occupy a rectangle and aren't swappable in MVP: cancel a drop onto/into one.
-        if (cellInWidget(dao.getContainer(HOME), source.id, page, cellX, cellY)) return
+        if (cellInWidget(dao.getContainer(HOME), source.id, page, cellX, cellY)) return false
         val occupant = dao.getAt(HOME, page, cellX, cellY)
         when {
             occupant == null -> dao.moveById(source.id, HOME, page, cellX, cellY)
@@ -228,6 +229,7 @@ class HomeLayoutRepository @Inject constructor(
                 dao.moveById(source.id, HOME, page, cellX, cellY)
             }
         }
+        return true
     }
 
     private fun homeApp(app: AppItem, container: Long, page: Int, cellX: Int, cellY: Int) =

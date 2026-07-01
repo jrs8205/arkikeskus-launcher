@@ -508,7 +508,8 @@ fun HomeScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 16.dp)
+                    // Clear the themed status bar (when shown) so the "remove" pill doesn't overlap it.
+                    .padding(top = if (settings.showStatusBar) 44.dp else 16.dp)
                     .onGloballyPositioned { dragController.removeBounds = it.boundsInRoot() },
             ) {
                 Row(

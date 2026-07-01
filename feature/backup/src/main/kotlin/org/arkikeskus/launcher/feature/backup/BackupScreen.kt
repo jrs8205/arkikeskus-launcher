@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -332,12 +333,28 @@ fun BackupScreen(
                     driveState.availableFiles.isEmpty() ->
                         Text(stringResource(R.string.backup_no_backups))
                     else -> LazyColumn(modifier = Modifier.heightIn(max = 320.dp).fillMaxWidth()) {
-                        items(driveState.availableFiles) { file ->
+                        // The list is newest-first (Drive orderBy modifiedTime desc). Show each backup's
+                        // date/time (readable, and works for old millisecond-named files too) and tag the
+                        // newest, so the user can tell which is the latest.
+                        itemsIndexed(driveState.availableFiles) { index, file ->
+                            val whenLabel = remember(file.modifiedTime) {
+                                runCatching {
+                                    java.time.format.DateTimeFormatter
+                                        .ofLocalizedDateTime(java.time.format.FormatStyle.MEDIUM)
+                                        .withZone(java.time.ZoneId.systemDefault())
+                                        .format(java.time.Instant.parse(file.modifiedTime))
+                                }.getOrDefault(file.name)
+                            }
+                            val label = if (index == 0) {
+                                "$whenLabel  •  ${stringResource(R.string.backup_latest)}"
+                            } else {
+                                whenLabel
+                            }
                             TextButton(
                                 onClick = { pendingDriveRestore = file; showDriveFiles = false },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text(file.name, style = MaterialTheme.typography.bodyMedium)
+                                Text(label, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
