@@ -75,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
@@ -385,6 +386,11 @@ fun HomeScreen(
         LocalThemedIcons provides settings.useThemedIcons,
         LocalIconPack provides settings.iconPackPackage,
         LocalAppLabelScale provides settings.appLabelTextScale,
+        // Force the workspace left-to-right even in RTL locales (ar/he/fa/ur). The grid renders with
+        // RTL-aware Modifier.offset {} but the drag/drop, drop-ring and popup-anchor math is all
+        // absolute left-origin, so under RTL they disagree and a drop lands in the mirrored cell.
+        // Pinning LTR keeps render + touch consistent; the drawer/settings keep their natural RTL.
+        LocalLayoutDirection provides LayoutDirection.Ltr,
     ) {
     Box(
         modifier = modifier
